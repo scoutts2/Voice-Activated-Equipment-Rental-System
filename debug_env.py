@@ -9,7 +9,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 print("=== Environment Variables Debug (Railway Test) ===")
-print(f"LIVEKIT_URL: {os.getenv('LIVEKIT_URL', 'NOT SET')}")
+livekit_url = os.getenv('LIVEKIT_URL', 'NOT SET')
+print(f"LIVEKIT_URL: {livekit_url}")
+if livekit_url != 'NOT SET':
+    print(f"URL Analysis: {livekit_url}")
+    if 'p_45gsu90kw0u' in livekit_url:
+        print("⚠️  WARNING: This URL format might be incorrect!")
+        print("   Expected format: wss://your-project-name.livekit.cloud")
 print(f"LIVEKIT_API_KEY: {os.getenv('LIVEKIT_API_KEY', 'NOT SET')}")
 print(f"LIVEKIT_API_SECRET: {os.getenv('LIVEKIT_API_SECRET', 'NOT SET')}")
 print(f"OPENAI_API_KEY: {os.getenv('OPENAI_API_KEY', 'NOT SET')}")
