@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load .env file (for local testing)
 load_dotenv()
 
-print("=== Environment Variables Debug ===")
+print("=== Environment Variables Debug (Railway Test) ===")
 print(f"LIVEKIT_URL: {os.getenv('LIVEKIT_URL', 'NOT SET')}")
 print(f"LIVEKIT_API_KEY: {os.getenv('LIVEKIT_API_KEY', 'NOT SET')}")
 print(f"LIVEKIT_API_SECRET: {os.getenv('LIVEKIT_API_SECRET', 'NOT SET')}")
