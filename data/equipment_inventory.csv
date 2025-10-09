@@ -1,16 +1,16 @@
 Equipment ID,Equipment Name,Category,Daily Rate,Status,Operator Cert Required,Min Insurance,Storage Location,Max Rate,Weight Class
-EQ001,CAT 320D Hydraulic Excavator,Heavy Excavation,1850,AVAILABLE,Heavy Equipment Class A,2500000,North Yard,2200,Medium Heavy
+EQ001,CAT 320D Hydraulic Excavator,Heavy Excavation,1850,RENTED,Heavy Equipment Class A,2500000,North Yard,2200,Medium Heavy
 EQ002,John Deere 644K Wheel Loader,Material Handling,1200,RENTED,Heavy Equipment Class B,1500000,South Yard,1450,Medium
-EQ003,Liebherr LTM 1070 Mobile Crane,Lifting Equipment,3200,AVAILABLE,Crane Operator License,5000000,North Yard,3800,Super Heavy
-EQ004,Toyota 8FGU25 Forklift,Warehouse Equipment,280,AVAILABLE,Forklift License,500000,Equipment Shed,350,Light
+EQ003,Liebherr LTM 1070 Mobile Crane,Lifting Equipment,3200,RENTED,Crane Operator License,5000000,North Yard,3800,Super Heavy
+EQ004,Toyota 8FGU25 Forklift,Warehouse Equipment,280,RENTED,Forklift License,500000,Equipment Shed,350,Light
 EQ005,CAT D6T Bulldozer,Earthmoving,2100,MAINTENANCE,Heavy Equipment Class A,3000000,Service Bay,2500,Heavy
 EQ006,JLG 2630ES Scissor Lift,Access Equipment,320,AVAILABLE,Aerial Work Platform,750000,Equipment Shed,380,Light
 EQ007,Bobcat S770 Skid Steer,Compact Equipment,450,AVAILABLE,Skid Steer License,800000,South Yard,550,Medium
-EQ008,Hitachi ZX350 Excavator,Heavy Excavation,2200,AVAILABLE,Heavy Equipment Class A,2800000,North Yard,2600,Heavy
+EQ008,Hitachi ZX350 Excavator,Heavy Excavation,2200,RENTED,Heavy Equipment Class A,2800000,North Yard,2600,Heavy
 EQ009,Genie Z-60 Boom Lift,Access Equipment,480,RESERVED,Aerial Work Platform,1200000,Equipment Shed,580,Medium
 EQ010,CAT 950M Wheel Loader,Material Handling,1650,AVAILABLE,Heavy Equipment Class B,2000000,South Yard,1950,Medium Heavy
-EQ011,Manitowoc 16000 Crawler Crane,Lifting Equipment,4500,AVAILABLE,Crane Operator License,8000000,North Yard,5200,Super Heavy
-EQ012,Yale GLP080 Forklift,Warehouse Equipment,320,AVAILABLE,Forklift License,600000,Equipment Shed,390,Light
+EQ011,Manitowoc 16000 Crawler Crane,Lifting Equipment,4500,RENTED,Crane Operator License,8000000,North Yard,5200,Super Heavy
+EQ012,Yale GLP080 Forklift,Warehouse Equipment,320,RENTED,Forklift License,600000,Equipment Shed,390,Light
 EQ013,Komatsu PC390 Excavator,Heavy Excavation,2400,AVAILABLE,Heavy Equipment Class A,3200000,North Yard,2800,Heavy
 EQ014,JCB 541-70 Telehandler,Material Handling,380,AVAILABLE,Telehandler License,900000,South Yard,460,Medium
-EQ015,CAT 140M Motor Grader,Road Construction,1900,AVAILABLE,Motor Grader License,2200000,North Yard,2300,Heavy
+EQ015,CAT 140M Motor Grader,Road Construction,1900,RENTED,Motor Grader License,2200000,North Yard,2300,Heavy
