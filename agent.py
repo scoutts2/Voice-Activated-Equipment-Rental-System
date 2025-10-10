@@ -453,13 +453,14 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     # Create AgentSession with STT, LLM, TTS
     # VOICE MODE ENABLED for phone calls and production use
     logger.info("Initializing voice-enabled agent session...")
-    logger.info(f"STT: deepgram/nova-2")
-    logger.info(f"TTS: openai/tts-1")
+    logger.info(f"STT: None (disabled for testing)")
+    logger.info(f"TTS: None (disabled for testing)")
     
+    # TEMPORARILY DISABLE STT/TTS TO TEST AGENT LOGIC
     session = AgentSession(
-        stt="deepgram/nova-2",  # Deepgram Speech-to-Text
+        stt=None,  # Disabled to avoid STT connection limits
         llm=openai_llm,  # OpenAI GPT-4o
-        tts="openai/tts-1",  # OpenAI Text-to-Speech (testing)
+        tts=None,  # Disabled to avoid TTS connection limits
     )
     
     logger.info("Voice-enabled agent session created successfully")
