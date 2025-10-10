@@ -484,5 +484,8 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
 
 if __name__ == "__main__":
     """Run the agent when this file is executed."""
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="equipment-rental-agent"  # Required for playground connection
+    ))
 
