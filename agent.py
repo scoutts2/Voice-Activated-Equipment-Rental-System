@@ -495,6 +495,6 @@ if __name__ == "__main__":
     """Run the agent when this file is executed."""
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
-        agent_name="equipment-rental-agent"  # Required for playground connection
+        agent_name="agent"  # Try default agent name
     ))
 
