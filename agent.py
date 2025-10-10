@@ -452,11 +452,17 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     
     # Create AgentSession with STT, LLM, TTS
     # VOICE MODE ENABLED for phone calls and production use
+    logger.info("Initializing voice-enabled agent session...")
+    logger.info(f"STT: deepgram/nova-2")
+    logger.info(f"TTS: elevenlabs/multilingual-v2")
+    
     session = AgentSession(
         stt="deepgram/nova-2",  # Deepgram Speech-to-Text
         llm=openai_llm,  # OpenAI GPT-4o
         tts="elevenlabs/multilingual-v2",  # ElevenLabs Text-to-Speech
     )
+    
+    logger.info("Voice-enabled agent session created successfully")
     
     # For TEXT-ONLY console testing, use this instead:
     # session = AgentSession(
@@ -466,6 +472,7 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     # )
     
     # Start the session with the agent and room
+    logger.info("Starting agent session...")
     await session.start(
         room=ctx.room,
         agent=agent,
@@ -473,6 +480,8 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     
     logger.info("Voice agent started and ready for calls")
     logger.info("Agent is now live and can handle phone calls via LiveKit Telephony")
+    logger.info(f"Room name: {ctx.room.name}")
+    logger.info(f"Agent name: equipment-rental-agent")
     
     # Note: In console mode, the agent will greet the user when they first type a message
     # The system prompt is configured to greet immediately when conversation starts
