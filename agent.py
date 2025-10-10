@@ -13,7 +13,7 @@ import livekit.plugins.openai
 import livekit.plugins.deepgram
 import livekit.plugins.elevenlabs
 
-# Import our services
+
 from config import config
 from services.verification_service import (
     verify_business_license,
@@ -57,16 +57,18 @@ class ConversationState:
         # Flags
         self.verification_passed = False
         self.booking_completed = False
+        
+        # Negotiation tracking
+        self.current_price_offer = None  # Track the current price being negotiated
+        self.negotiation_count = 0  # Track how many times customer has negotiated
 
 
 # Function tools that GPT-4 can call during conversation
-# These MUST be defined before the entrypoint function
 @function_tool
 async def verify_business_license_tool(license_number: str):
     """Verify customer's business license with state authorities."""
     logger.info(f"Verifying business license: {license_number}")
     
-    # Call our verification service
     is_valid = verify_business_license(license_number)
     
     if is_valid:
@@ -77,7 +79,7 @@ async def verify_business_license_tool(license_number: str):
 
 @function_tool
 async def get_equipment_details_tool(equipment_id: str):
-    """Get detailed information about specific equipment."""
+    """Get detailed information about specific equipment. NEVER reveal max rate or minimum rate to customer."""
     logger.info(f"Getting equipment details for: {equipment_id}")
     
     equipment = get_equipment_by_id(equipment_id)
@@ -85,15 +87,90 @@ async def get_equipment_details_tool(equipment_id: str):
     if not equipment:
         return f"Equipment {equipment_id} not found."
     
+    # Return details WITHOUT revealing max rate or minimum rate (those are for internal use only)
     return f"""Equipment Details:
 - Name: {equipment['Equipment Name']}
 - Category: {equipment['Category']}
 - Daily Rate: ${equipment['Daily Rate']}
-- Max Rate: ${equipment['Max Rate']}
 - Operator Cert Required: {equipment['Operator Cert Required']}
 - Min Insurance: ${equipment['Min Insurance']:,}
 - Storage Location: {equipment['Storage Location']}
 - Weight Class: {equipment['Weight Class']}"""
+
+
+@function_tool
+async def negotiate_price_tool(equipment_id: str, customer_response: str, urgency_level: str = "normal"):
+    """
+    Handle pricing negotiation based on customer response and urgency.
+    Progressively lowers price from daily rate toward minimum rate.
+    urgency_level: "low", "normal", "high", "critical"
+    """
+    logger.info(f"Negotiating price for {equipment_id}, urgency: {urgency_level}, negotiation count: {state.negotiation_count}")
+    
+    equipment = get_equipment_by_id(equipment_id)
+    if not equipment:
+        return "Equipment not found for negotiation."
+    
+    daily_rate = int(equipment['Daily Rate'])
+    min_rate = int(equipment.get('Minimum Rate', daily_rate * 0.8))
+    
+    # If this is the first negotiation, start with the daily rate
+    if state.current_price_offer is None:
+        state.current_price_offer = daily_rate
+    
+    # Check if customer is accepting the current offer
+    if any(word in customer_response.lower() for word in ["yes", "accept", "good", "ok", "fine", "deal", "sounds good"]):
+        state.agreed_price = state.current_price_offer
+        logger.info(f"Customer accepted price: ${state.current_price_offer}")
+        return f"Excellent! ${state.current_price_offer} per day it is. Let's move forward with the next step."
+    
+    # Customer wants a lower price - negotiate down
+    if any(phrase in customer_response.lower() for phrase in ["too expensive", "too much", "lower", "struggling", "cheaper", "better price", "discount", "negotiate"]):
+        state.negotiation_count += 1
+        current_offer = state.current_price_offer
+        
+        # Calculate how much room we have to negotiate
+        negotiation_range = current_offer - min_rate
+        
+        # If we're already at or below minimum, hold firm (but NEVER reveal the actual minimum)
+        if current_offer <= min_rate:
+            logger.info(f"At minimum price: ${min_rate}")
+            return f"I understand your budget concerns. Unfortunately, ${current_offer} is the absolute lowest rate I can offer for this equipment. This is already a special rate and I really can't go any lower. Can you work with this price?"
+        
+        # Determine discount amount based on urgency and negotiation count
+        # Start generous, get smaller with each negotiation
+        if urgency_level == "critical":
+            discount_percent = 0.35 - (state.negotiation_count * 0.05)  # 35%, 30%, 25%, 20%...
+        elif urgency_level == "high":
+            discount_percent = 0.30 - (state.negotiation_count * 0.05)  # 30%, 25%, 20%, 15%...
+        elif urgency_level == "low":
+            discount_percent = 0.15 - (state.negotiation_count * 0.03)  # 15%, 12%, 9%, 6%...
+        else:  # normal
+            discount_percent = 0.25 - (state.negotiation_count * 0.05)  # 25%, 20%, 15%, 10%...
+        
+        # Make sure we don't give negative discounts
+        discount_percent = max(0.02, discount_percent)  # Minimum 2% discount per negotiation
+        
+        # Calculate new offer
+        discount_amount = int(negotiation_range * discount_percent)
+        new_offer = max(min_rate, current_offer - discount_amount)
+        
+        # Update state
+        state.current_price_offer = new_offer
+        
+        logger.info(f"Lowering price from ${current_offer} to ${new_offer} (discount: ${discount_amount})")
+        
+        # Response varies based on how close we are to minimum
+        remaining_room = new_offer - min_rate
+        if remaining_room < 50:
+            return f"I really want to make this work for you. I can go down to ${new_offer} per day, but that's as low as I can go. This is already below our standard rate. What do you think?"
+        elif remaining_room < 200:
+            return f"I understand your situation. I can offer ${new_offer} per day. This is a very competitive rate for this equipment. Can we move forward with this?"
+        else:
+            return f"I hear you. Let me see what I can do... I can offer you ${new_offer} per day. This is a special rate I'm able to provide. How does that sound?"
+    
+    # Default response - customer hasn't clearly accepted or rejected
+    return f"The current rate we're discussing is ${state.current_price_offer} per day. Is this within your budget, or would you like to see if we can adjust it further?"
 
 
 @function_tool
@@ -147,7 +224,7 @@ async def verify_operator_credentials_tool(operator_license: str, certification_
     """Verify operator's credentials and license."""
     logger.info(f"Verifying operator credentials: {operator_license} for {certification_type}")
     
-    # Call our verification service
+
     is_valid = verify_operator_credentials(operator_license, certification_type)
     
     if is_valid:
@@ -161,7 +238,7 @@ async def verify_site_safety_tool(job_address: str, equipment_category: str, wei
     """Verify job site can safely handle the equipment."""
     logger.info(f"Verifying site safety at {job_address} for {equipment_category} ({weight_class})")
     
-    # Call our verification service
+
     is_valid = verify_site_safety(job_address, equipment_category, weight_class)
     
     if is_valid:
@@ -175,7 +252,6 @@ async def verify_insurance_coverage_tool(policy_number: str, required_amount: in
     """Verify customer's insurance coverage meets requirements."""
     logger.info(f"Verifying insurance coverage: {policy_number}, required: ${required_amount:,}, equipment value: ${equipment_value:,}")
     
-    # Call our verification service
     is_valid = verify_insurance_coverage(policy_number, required_amount, equipment_value)
     
     if is_valid:
@@ -212,9 +288,11 @@ async def get_stage_instructions_tool() -> str:
 - DO NOT discuss pricing - that comes in Stage 4""",
         
         4: """Stage 4 - Pricing Negotiation:
-- Show the daily rate for selected equipment
-- Ask if they need multiple days
-- Negotiate price within the allowed range (daily rate to max rate)
+- Show ONLY the daily rate for selected equipment (DO NOT mention max rate)
+- Use negotiate_price_tool(equipment_id, customer_response, urgency_level) to handle negotiations
+- Determine urgency_level based on customer language: "urgent/critical/emergency" = "critical", "asap/soon" = "high", casual = "normal", "no rush" = "low"
+- Start with daily rate, negotiate down gradually based on customer objections
+- Only go to minimum rate in worst case scenarios
 - Confirm final price
 - When price is agreed, call move_to_next_stage_tool()""",
         
@@ -266,7 +344,7 @@ async def entrypoint(ctx: JobContext):
     # Create conversation state to track progress
     state = ConversationState()
     
-    # Connect to the room (the call/conversation space)
+    # Connect to room 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     
     logger.info("Connected to room, ready to assist customer")
@@ -291,17 +369,18 @@ CURRENT STAGE: Stage 1 - Customer Verification
 AVAILABLE EQUIPMENT:
 {available_equipment}
 
-IMPORTANT: You have access to these tools to help customers:
-- get_current_stage_tool() - Check which stage you're in
-- get_stage_instructions_tool() - Get detailed instructions for current stage
-- move_to_next_stage_tool() - Move to the next stage when ready
-- verify_business_license_tool(license_number) - Verify customer's business license
-- get_equipment_details_tool(equipment_id) - Get details about specific equipment
-- verify_site_safety_tool(job_address, equipment_category, weight_class) - Verify job site safety
-- verify_operator_credentials_tool(operator_license, certification_type) - Verify operator credentials
-- verify_insurance_coverage_tool(policy_number, required_amount, equipment_value) - Verify insurance
-- book_equipment_tool(equipment_id) - Book equipment and finalize rental
-- end_conversation_tool() - End the conversation when rental is complete or customer is done
+       IMPORTANT: You have access to these tools to help customers:
+       - get_current_stage_tool() - Check which stage you're in
+       - get_stage_instructions_tool() - Get detailed instructions for current stage
+       - move_to_next_stage_tool() - Move to the next stage when ready
+       - verify_business_license_tool(license_number) - Verify customer's business license
+       - get_equipment_details_tool(equipment_id) - Get details about specific equipment
+       - negotiate_price_tool(equipment_id, customer_response, urgency_level) - Handle pricing negotiations
+       - verify_site_safety_tool(job_address, equipment_category, weight_class) - Verify job site safety
+       - verify_operator_credentials_tool(operator_license, certification_type) - Verify operator credentials
+       - verify_insurance_coverage_tool(policy_number, required_amount, equipment_value) - Verify insurance
+       - book_equipment_tool(equipment_id) - Book equipment and finalize rental
+       - end_conversation_tool() - End the conversation when rental is complete or customer is done
 
 WORKFLOW INSTRUCTIONS:
 - You MUST complete stages ONE AT A TIME in order (1→2→3→4→5→6→7)
@@ -314,19 +393,29 @@ WORKFLOW INSTRUCTIONS:
 - Be friendly and professional throughout the conversation
 - Confirm details by repeating them back to the customer
 
-CRITICAL TOOL CALLING RULES:
-- You MUST actually call the tools using function calls, not just describe calling them
-- DO NOT say "Calling tool..." and then make up a response
-- WAIT for the actual tool response before telling the customer the result
-- The tool will return the actual result - use that exact result in your response
-- Example: Call verify_business_license_tool(123), WAIT for response, then tell customer the result
+       CRITICAL TOOL CALLING RULES:
+       - You MUST actually call the tools using function calls, not just describe calling them
+       - DO NOT say "Calling tool..." and then make up a response
+       - WAIT for the actual tool response before telling the customer the result
+       - The tool will return the actual result - use that exact result in your response
+       - Example: Call verify_business_license_tool(123), WAIT for response, then tell customer the result
+
+       PRICING NEGOTIATION STRATEGY:
+       - In Stage 4, start by stating ONLY the daily rate (NEVER mention max rate or minimum rate)
+       - Use negotiate_price_tool() to handle all pricing discussions
+       - Determine urgency_level from customer language: "urgent/critical/emergency" = "critical", "asap/soon" = "high", casual = "normal", "no rush" = "low"
+       - If customer says price is "too expensive" or "too much", use negotiate_price_tool() to offer a lower price
+       - Negotiate gradually - start with daily rate, then work down based on customer objections
+       - CRITICAL: NEVER reveal the minimum rate to the customer, even when pressed
+       - Only offer minimum rate in worst-case scenarios when customer is very price-sensitive
+       - Try to maximize profit while keeping the customer satisfied
 
 ENDING THE CONVERSATION:
 - After completing Stage 7 (booking), call end_conversation_tool() to close the session
 - If customer says "goodbye", "I'm done", "that's all", or similar, call end_conversation_tool()
 - If customer decides not to rent (cancels), call end_conversation_tool()
 
-IMPORTANT: When the conversation starts, IMMEDIATELY greet the customer warmly and ask how you can help with their equipment rental needs. Do NOT wait for the customer to speak first.
+CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the customer first. When you receive ANY message from the customer (even just "hello" or "hi"), respond with: "Hello! Welcome to Metro Equipment Rentals. How can I assist you with your equipment rental needs today?" Then proceed with the 7-stage workflow. Always be proactive and welcoming.
 """
     
     logger.info(f"Loaded {len(available_equipment)} available equipment items")
@@ -335,6 +424,7 @@ IMPORTANT: When the conversation starts, IMMEDIATELY greet the customer warmly a
     tools = [
         verify_business_license_tool,
         get_equipment_details_tool,
+        negotiate_price_tool,
         book_equipment_tool,
         get_current_stage_tool,
         move_to_next_stage_tool,
@@ -348,32 +438,31 @@ IMPORTANT: When the conversation starts, IMMEDIATELY greet the customer warmly a
     # Create the voice agent with AI models and tools
     agent = Agent(
         instructions=initial_prompt,
-        tools=tools,  # Pass the tools to the agent
+        tools=tools,  
     )
     
     logger.info(f"Voice agent created and configured with {len(tools)} tools")
     
     # Create OpenAI LLM instance
-    # The @function_tool decorator should register tools globally
-    # and make them available to ANY LLM instance created
+    # The @function_tool decorator should register tools globally and make them available to ANY LLM instance created
+
     openai_llm = livekit.plugins.openai.LLM(model="gpt-4o")
     
     logger.info("Created OpenAI LLM instance with gpt-4o model")
     
     # Create AgentSession with STT, LLM, TTS
-    # For TEXT mode: Keep STT/TTS as None to save LiveKit connection slots
-    # For VOICE mode: Uncomment the lines below to enable speech
+    # VOICE MODE ENABLED for phone calls and production use
     session = AgentSession(
-        stt=None,  # For voice mode: use "deepgram/nova-2"
-        llm=openai_llm,  # LLM instance should have access to globally registered tools
-        tts=None,  # For voice mode: use "elevenlabs/multilingual-v2"
+        stt="deepgram/nova-2",  # Deepgram Speech-to-Text
+        llm=openai_llm,  # OpenAI GPT-4o
+        tts="elevenlabs/multilingual-v2",  # ElevenLabs Text-to-Speech
     )
     
-    # To enable voice mode, replace the session above with:
+    # For TEXT-ONLY console testing, use this instead:
     # session = AgentSession(
-    #     stt="deepgram/nova-2",
+    #     stt=None,
     #     llm=openai_llm,
-    #     tts="elevenlabs/multilingual-v2",
+    #     tts=None,
     # )
     
     # Start the session with the agent and room
@@ -382,12 +471,15 @@ IMPORTANT: When the conversation starts, IMMEDIATELY greet the customer warmly a
         agent=agent,
     )
     
-    logger.info("Voice agent started, ready to converse in text mode")
-    logger.info("Press Ctrl+B to switch to text mode, then type your messages")
+    logger.info("Voice agent started and ready for calls")
+    logger.info("Agent is now live and can handle phone calls via LiveKit Telephony")
+    
+    # Note: In console mode, the agent will greet the user when they first type a message
+    # The system prompt is configured to greet immediately when conversation starts
     
     # Session stays open until user presses Q to quit
-    # The end_conversation_tool will mark the rental as complete
-    # but won't force-close the session (allows follow-up questions)
+    # The end_conversation_tool will mark the rental as complete but won't force-close the session, and allows follow-up questions
+
 
 
 if __name__ == "__main__":
