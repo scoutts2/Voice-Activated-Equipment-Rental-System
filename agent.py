@@ -493,6 +493,10 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
 
 if __name__ == "__main__":
     """Run the agent when this file is executed."""
+    logger.info("Starting LiveKit agent worker...")
+    logger.info("Agent name: agent")
+    logger.info("Entrypoint function: entrypoint")
+    
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         agent_name="agent"  # Try default agent name
