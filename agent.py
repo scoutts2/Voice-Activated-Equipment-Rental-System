@@ -356,6 +356,15 @@ async def entrypoint(ctx: JobContext):
     # Build initial system prompt with equipment data
     available_equipment = get_available_equipment()
     
+    # Format equipment list for better LLM readability
+    equipment_text = []
+    for item in available_equipment:
+        equipment_text.append(
+            f"- {item.get('Equipment ID')}: {item.get('Equipment Name', 'N/A')} "
+            f"[Category: {item.get('Category')}, Daily Rate: ${item.get('Daily Rate')}, Status: {item.get('Status')}]"
+        )
+    formatted_equipment = "\n".join(equipment_text)
+    
     initial_prompt = f"""You are a professional equipment rental agent for {config.COMPANY_NAME}.
 
 Your job is to help customers rent construction equipment through a 7-stage process:
@@ -370,8 +379,8 @@ Your job is to help customers rent construction equipment through a 7-stage proc
 
 CURRENT STAGE: Stage 1 - Customer Verification
 
-AVAILABLE EQUIPMENT:
-{available_equipment}
+AVAILABLE EQUIPMENT (Total: {len(available_equipment)} items):
+{formatted_equipment}
 
        IMPORTANT: You have access to these tools to help customers:
        - get_current_stage_tool() - Check which stage you're in
@@ -422,7 +431,7 @@ ENDING THE CONVERSATION:
 CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the customer immediately. When the call connects, respond with: "Hello! Thank you for calling Metro Equipment Rentals. I'm here to help you with your construction equipment rental needs. How can I assist you today?" Then proceed with the 7-stage workflow. Speak clearly and professionally for phone conversation.
 """
     
-    logger.info(f"Loaded {len(available_equipment)} available equipment items")
+    logger.info(f"Loaded {len(available_equipment)} available equipment items (formatted for LLM)")
     
     # Collect all the function tools
     tools = [
