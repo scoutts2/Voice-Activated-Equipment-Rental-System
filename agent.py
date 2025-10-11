@@ -456,21 +456,22 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info(f"STT: deepgram/nova-2 (enabled for voice)")
     logger.info(f"TTS: openai/tts-1 (enabled for voice)")
     
-    # ENABLE STT/TTS FOR PLAYGROUND TESTING
+    # VOICE MODE ENABLED - Using Deepgram (streaming) + OpenAI TTS
+    # Pass API keys explicitly to ensure they're used correctly
     session = AgentSession(
-        stt="deepgram/nova-2",  # Deepgram STT for voice input
+        stt=livekit.plugins.deepgram.STT(
+            model="nova-2",
+            api_key=config.DEEPGRAM_API_KEY
+        ),  # Deepgram streaming STT
         llm=openai_llm,  # OpenAI GPT-4o
-        tts="openai/tts-1",  # OpenAI TTS (more reliable than ElevenLabs)
+        tts=livekit.plugins.openai.TTS(
+            model="tts-1",
+            voice="alloy",
+            api_key=config.OPENAI_API_KEY
+        ),  # OpenAI TTS
     )
     
-    logger.info("Voice-enabled agent session created successfully")
-    
-    # For TEXT-ONLY console testing, use this instead:
-    # session = AgentSession(
-    #     stt=None,
-    #     llm=openai_llm,
-    #     tts=None,
-    # )
+    logger.info("Voice-enabled agent session created with Deepgram STT + OpenAI TTS")
     
     # Start the session with the agent and room
     logger.info("Starting agent session")
