@@ -521,83 +521,21 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
         logger.info("Agent session started successfully")
         logger.info(f"Agent ready - Room: {ctx.room.name}")
         
-        # Note: For telephony, the agent will greet the caller immediately via voice
-        # The system prompt is configured to greet when the call starts
-        
-        # Session stays open until the call ends (user hangs up or session closes)
-        # The session.start() will block here until the call ends
-        logger.info("session.start() returned - call has ended")
-        
-    except asyncio.CancelledError:
-        logger.warning("Agent session was cancelled (likely abrupt hangup)")
-        # Don't re-raise - let cleanup happen
     except Exception as e:
-        logger.error(f"========================================")
-        logger.error(f"ERROR during agent session: {e}")
-        logger.error(f"========================================", exc_info=True)
-        # Don't re-raise - let cleanup happen
+        logger.error(f"ERROR during agent session: {e}", exc_info=True)
     finally:
-        # Cleanup when session ends (call hangup, error, etc.)
-        logger.info(f"========================================")
         logger.info(f"CALL ENDED - Cleaning up")
-        logger.info(f"Room: {ctx.room.name}")
         
         try:
-            logger.info(f"Remaining participants: {len(ctx.room.remote_participants)}")
+            await asyncio.sleep(0.3)
+            if ctx.room.connection_state == "connected":
+                await ctx.room.disconnect()
+                logger.info("Disconnected successfully")
         except Exception as e:
-            logger.warning(f"Could not get participant count: {e}")
+            logger.warning(f"Cleanup error: {e}")
         
-        logger.info(f"========================================")
-        
-        # Cancel any pending tasks in the session
-        try:
-            logger.info("Cancelling any pending session tasks...")
-            # Allow a short grace period for tasks to complete
-            await asyncio.sleep(0.1)
-        except Exception as e:
-            logger.warning(f"Error during task cancellation: {e}")
-        
-        # Explicitly close the session to release resources
-        try:
-            await asyncio.sleep(0.2)
-            logger.info("Closing agent session...")
-            # Force garbage collection of session resources
-            del session
-            await asyncio.sleep(0.1)
-            logger.info("Session closed and resources released")
-        except Exception as e:
-            logger.warning(f"Error during session cleanup: {e}")
-        
-        # Disconnect from the room to ensure clean state
-        try:
-            await asyncio.sleep(0.2)
-            if hasattr(ctx.room, 'connection_state'):
-                if ctx.room.connection_state == "connected":
-                    logger.info("Disconnecting from room...")
-                    await ctx.room.disconnect()
-                    logger.info("Disconnected from room successfully")
-                else:
-                    logger.info(f"Room already disconnected (state: {ctx.room.connection_state})")
-            else:
-                logger.info("Room connection state unavailable - assuming disconnected")
-        except Exception as e:
-            logger.warning(f"Error disconnecting from room: {e}")
-        
-        # Final cleanup delay to ensure all async operations complete
-        try:
-            await asyncio.sleep(0.5)
-        except Exception as e:
-            logger.warning(f"Error during final cleanup delay: {e}")
-        
-        # Force garbage collection
-        import gc
-        gc.collect()
-        
-        # The state will be recreated for the next call
-        # The entrypoint function will be called again for each new incoming call
-        logger.info("Cleanup complete - ready for next call")
-        logger.info(f"========================================")
-        logger.info("Worker remains active and listening for new calls...")
+        await asyncio.sleep(0.5)
+        logger.info("Ready for next call")
 
 
 
