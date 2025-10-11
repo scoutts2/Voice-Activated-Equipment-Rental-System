@@ -455,6 +455,9 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     )
     
     logger.info(f"Voice agent created and configured with {len(tools)} tools")
+    logger.info(f"[PROMPT CHECK] System prompt length: {len(initial_prompt)} characters")
+    logger.info(f"[PROMPT CHECK] Equipment count in prompt: {len(available_equipment)} items")
+    logger.info(f"[PROMPT CHECK] First 200 chars of prompt: {initial_prompt[:200]}...")
     
     # Create OpenAI LLM instance
     # The @function_tool decorator should register tools globally and make them available to ANY LLM instance created
@@ -500,6 +503,12 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     # Start the session with the agent and room
     logger.info("Starting agent session")
     logger.info("[DEBUG] This will log all STT transcriptions to help debug phone vs console differences")
+    
+    # Log the exact prompt being used
+    logger.info("="*60)
+    logger.info("[FULL PROMPT] Agent is using this system prompt:")
+    logger.info(initial_prompt[:500] + "..." if len(initial_prompt) > 500 else initial_prompt)
+    logger.info("="*60)
     
     try:
         await session.start(
