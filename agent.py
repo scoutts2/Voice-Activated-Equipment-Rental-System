@@ -472,8 +472,8 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info(f"STT: deepgram/nova-2 (enabled for voice)")
     logger.info(f"TTS: openai/tts-1 (enabled for voice)")
     
-    # VOICE MODE ENABLED - Using Deepgram (streaming) + ElevenLabs TTS
-    # ElevenLabs is more reliable for phone calls than OpenAI TTS
+    # VOICE MODE ENABLED - Using Deepgram (streaming) + OpenAI TTS
+    # Switched back to OpenAI TTS due to ElevenLabs websocket issues on Railway
     
     # Add STT event handler to log what the agent is hearing
     def on_stt_transcript(transcript):
@@ -487,12 +487,14 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     session = AgentSession(
         stt=deepgram_stt,  # Deepgram streaming STT
         llm=openai_llm,  # OpenAI GPT-4o
-        tts=livekit.plugins.elevenlabs.TTS(
-            api_key=config.ELEVENLABS_API_KEY
-        ),  # ElevenLabs TTS (more reliable for calls)
+        tts=livekit.plugins.openai.TTS(
+            model="tts-1",
+            voice="alloy",
+            api_key=config.OPENAI_API_KEY
+        ),  # OpenAI TTS (more stable on Railway)
     )
     
-    logger.info("Voice-enabled agent session created with Deepgram STT + ElevenLabs TTS")
+    logger.info("Voice-enabled agent session created with Deepgram STT + OpenAI TTS")
     
     # Add event listener for user speech (to log what STT transcribed)
     @ctx.room.on("track_subscribed")
