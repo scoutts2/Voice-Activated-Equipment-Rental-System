@@ -5,6 +5,9 @@ Supports both CSV files and Google Sheets.
 
 import pandas as pd
 import logging
+import json
+import base64
+import os
 from typing import List, Dict, Optional
 from pathlib import Path
 from config import config
@@ -37,8 +40,8 @@ def _get_google_sheets_client():
     if not GOOGLE_SHEETS_AVAILABLE:
         return None
     
-    if not config.GOOGLE_SERVICE_ACCOUNT_FILE or not config.EQUIPMENT_SHEET_ID:
-        logger.info("Google Sheets not configured, using CSV fallback")
+    if not config.EQUIPMENT_SHEET_ID:
+        logger.info("Google Sheets not configured (no sheet ID), using CSV fallback")
         return None
     
     try:
@@ -48,11 +51,45 @@ def _get_google_sheets_client():
             'https://www.googleapis.com/auth/drive'
         ]
         
-        # Load credentials from service account file
-        creds = Credentials.from_service_account_file(
-            config.GOOGLE_SERVICE_ACCOUNT_FILE,
-            scopes=scopes
-        )
+        # Try to load credentials from multiple sources
+        creds = None
+        
+        # Option 1: Try base64-encoded credentials from environment variable
+        creds_b64 = os.getenv('GOOGLE_CREDENTIALS_BASE64')
+        if creds_b64:
+            try:
+                creds_json = base64.b64decode(creds_b64).decode()
+                creds_info = json.loads(creds_json)
+                creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+                logger.info("Loaded credentials from GOOGLE_CREDENTIALS_BASE64 env var")
+            except Exception as e:
+                logger.warning(f"Failed to load base64 credentials: {e}")
+        
+        # Option 2: Try JSON credentials from environment variable
+        if not creds:
+            creds_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+            if creds_json:
+                try:
+                    creds_info = json.loads(creds_json)
+                    creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
+                    logger.info("Loaded credentials from GOOGLE_CREDENTIALS_JSON env var")
+                except Exception as e:
+                    logger.warning(f"Failed to load JSON credentials: {e}")
+        
+        # Option 3: Try loading from file (for local development)
+        if not creds and config.GOOGLE_SERVICE_ACCOUNT_FILE:
+            if Path(config.GOOGLE_SERVICE_ACCOUNT_FILE).exists():
+                creds = Credentials.from_service_account_file(
+                    config.GOOGLE_SERVICE_ACCOUNT_FILE,
+                    scopes=scopes
+                )
+                logger.info(f"Loaded credentials from file: {config.GOOGLE_SERVICE_ACCOUNT_FILE}")
+            else:
+                logger.warning(f"Credentials file not found: {config.GOOGLE_SERVICE_ACCOUNT_FILE}")
+        
+        if not creds:
+            logger.warning("No Google credentials found in environment or file")
+            return None
         
         # Create gspread client
         _sheets_client = gspread.authorize(creds)
