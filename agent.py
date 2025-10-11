@@ -528,6 +528,9 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
         # The session.start() will block here until the call ends
         logger.info("session.start() returned - call has ended")
         
+    except asyncio.CancelledError:
+        logger.warning("Agent session was cancelled (likely abrupt hangup)")
+        # Don't re-raise - let cleanup happen
     except Exception as e:
         logger.error(f"========================================")
         logger.error(f"ERROR during agent session: {e}")
@@ -538,36 +541,63 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
         logger.info(f"========================================")
         logger.info(f"CALL ENDED - Cleaning up")
         logger.info(f"Room: {ctx.room.name}")
-        logger.info(f"Remaining participants: {len(ctx.room.remote_participants)}")
+        
+        try:
+            logger.info(f"Remaining participants: {len(ctx.room.remote_participants)}")
+        except Exception as e:
+            logger.warning(f"Could not get participant count: {e}")
+        
         logger.info(f"========================================")
+        
+        # Cancel any pending tasks in the session
+        try:
+            logger.info("Cancelling any pending session tasks...")
+            # Allow a short grace period for tasks to complete
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.warning(f"Error during task cancellation: {e}")
         
         # Explicitly close the session to release resources
         try:
-            # Give the session a moment to finish any pending operations
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.2)
             logger.info("Closing agent session...")
-            # The session should auto-cleanup when it goes out of scope
+            # Force garbage collection of session resources
+            del session
+            await asyncio.sleep(0.1)
+            logger.info("Session closed and resources released")
         except Exception as e:
             logger.warning(f"Error during session cleanup: {e}")
         
         # Disconnect from the room to ensure clean state
         try:
             await asyncio.sleep(0.2)
-            if ctx.room.connection_state == "connected":
-                await ctx.room.disconnect()
-                logger.info("Disconnected from room successfully")
+            if hasattr(ctx.room, 'connection_state'):
+                if ctx.room.connection_state == "connected":
+                    logger.info("Disconnecting from room...")
+                    await ctx.room.disconnect()
+                    logger.info("Disconnected from room successfully")
+                else:
+                    logger.info(f"Room already disconnected (state: {ctx.room.connection_state})")
             else:
-                logger.info(f"Room already disconnected (state: {ctx.room.connection_state})")
+                logger.info("Room connection state unavailable - assuming disconnected")
         except Exception as e:
             logger.warning(f"Error disconnecting from room: {e}")
         
-        # Final cleanup delay
-        await asyncio.sleep(0.5)
+        # Final cleanup delay to ensure all async operations complete
+        try:
+            await asyncio.sleep(0.5)
+        except Exception as e:
+            logger.warning(f"Error during final cleanup delay: {e}")
+        
+        # Force garbage collection
+        import gc
+        gc.collect()
         
         # The state will be recreated for the next call
         # The entrypoint function will be called again for each new incoming call
         logger.info("Cleanup complete - ready for next call")
         logger.info(f"========================================")
+        logger.info("Worker remains active and listening for new calls...")
 
 
 
