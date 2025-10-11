@@ -465,8 +465,7 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
         ),  # Deepgram streaming STT
         llm=openai_llm,  # OpenAI GPT-4o
         tts=livekit.plugins.elevenlabs.TTS(
-            model_id="eleven_multilingual_v2",
-            api_key=config.ELEVEN_API_KEY
+            api_key=config.ELEVENLABS_API_KEY
         ),  # ElevenLabs TTS (more reliable for calls)
     )
     
