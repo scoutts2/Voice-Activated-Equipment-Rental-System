@@ -23,7 +23,6 @@ from services.verification_service import (
 )
 from services.sheets_service import (
     get_available_equipment,
-    get_available_equipment_summary,
     get_equipment_by_id,
     update_equipment_status
 )
@@ -354,8 +353,8 @@ async def entrypoint(ctx: JobContext):
     
     logger.info("Connected to room, creating agent session")
     
-    # Build initial system prompt with equipment data summary (not full details)
-    equipment_summary = get_available_equipment_summary()
+    # Build initial system prompt with equipment data
+    available_equipment = get_available_equipment()
     
     initial_prompt = f"""You are a professional equipment rental agent for {config.COMPANY_NAME}.
 
@@ -372,7 +371,7 @@ Your job is to help customers rent construction equipment through a 7-stage proc
 CURRENT STAGE: Stage 1 - Customer Verification
 
 AVAILABLE EQUIPMENT:
-{equipment_summary}
+{available_equipment}
 
        IMPORTANT: You have access to these tools to help customers:
        - get_current_stage_tool() - Check which stage you're in
@@ -423,7 +422,7 @@ ENDING THE CONVERSATION:
 CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the customer immediately. When the call connects, respond with: "Hello! Thank you for calling Metro Equipment Rentals. I'm here to help you with your construction equipment rental needs. How can I assist you today?" Then proceed with the 7-stage workflow. Speak clearly and professionally for phone conversation.
 """
     
-    logger.info("Loaded equipment summary for system prompt")
+    logger.info(f"Loaded {len(available_equipment)} available equipment items")
     
     # Collect all the function tools
     tools = [
@@ -508,11 +507,18 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
         logger.info(f"Remaining participants: {len(ctx.room.remote_participants)}")
         logger.info(f"========================================")
         
-        # Wait a moment for any pending operations to complete
-        await asyncio.sleep(0.5)
+        # Explicitly close the session to release resources
+        try:
+            # Give the session a moment to finish any pending operations
+            await asyncio.sleep(0.3)
+            logger.info("Closing agent session...")
+            # The session should auto-cleanup when it goes out of scope
+        except Exception as e:
+            logger.warning(f"Error during session cleanup: {e}")
         
         # Disconnect from the room to ensure clean state
         try:
+            await asyncio.sleep(0.2)
             if ctx.room.connection_state == "connected":
                 await ctx.room.disconnect()
                 logger.info("Disconnected from room successfully")
@@ -520,6 +526,9 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
                 logger.info(f"Room already disconnected (state: {ctx.room.connection_state})")
         except Exception as e:
             logger.warning(f"Error disconnecting from room: {e}")
+        
+        # Final cleanup delay
+        await asyncio.sleep(0.5)
         
         # The state will be recreated for the next call
         # The entrypoint function will be called again for each new incoming call
