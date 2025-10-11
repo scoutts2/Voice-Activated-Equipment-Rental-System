@@ -458,13 +458,13 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     # VOICE MODE ENABLED for phone calls and production use
     logger.info("Initializing voice-enabled agent session...")
     logger.info(f"STT: deepgram/nova-2 (enabled for playground)")
-    logger.info(f"TTS: livekit/tts (enabled for playground)")
+    logger.info(f"TTS: None (disabled - testing text-only response)")
     
     # ENABLE STT/TTS FOR PLAYGROUND TESTING
     session = AgentSession(
         stt="deepgram/nova-2",  # Deepgram STT
         llm=openai_llm,  # OpenAI GPT-4o
-        tts="livekit/tts",  # LiveKit built-in TTS
+        tts=None,  # Temporarily disable TTS to test text-only response
     )
     
     logger.info("Voice-enabled agent session created successfully")
