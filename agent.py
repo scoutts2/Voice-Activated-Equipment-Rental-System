@@ -23,6 +23,7 @@ from services.verification_service import (
 )
 from services.sheets_service import (
     get_available_equipment,
+    get_available_equipment_summary,
     get_equipment_by_id,
     update_equipment_status
 )
@@ -353,8 +354,8 @@ async def entrypoint(ctx: JobContext):
     
     logger.info("Connected to room, creating agent session")
     
-    # Build initial system prompt with equipment data
-    available_equipment = get_available_equipment()
+    # Build initial system prompt with equipment data summary (not full details)
+    equipment_summary = get_available_equipment_summary()
     
     initial_prompt = f"""You are a professional equipment rental agent for {config.COMPANY_NAME}.
 
@@ -371,7 +372,7 @@ Your job is to help customers rent construction equipment through a 7-stage proc
 CURRENT STAGE: Stage 1 - Customer Verification
 
 AVAILABLE EQUIPMENT:
-{available_equipment}
+{equipment_summary}
 
        IMPORTANT: You have access to these tools to help customers:
        - get_current_stage_tool() - Check which stage you're in
@@ -422,7 +423,7 @@ ENDING THE CONVERSATION:
 CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the customer immediately. When the call connects, respond with: "Hello! Thank you for calling Metro Equipment Rentals. I'm here to help you with your construction equipment rental needs. How can I assist you today?" Then proceed with the 7-stage workflow. Speak clearly and professionally for phone conversation.
 """
     
-    logger.info(f"Loaded {len(available_equipment)} available equipment items")
+    logger.info("Loaded equipment summary for system prompt")
     
     # Collect all the function tools
     tools = [

@@ -181,6 +181,34 @@ def get_available_equipment():
     return available
 
 
+def get_available_equipment_summary():
+    """
+    Get a concise summary of available equipment for the system prompt.
+    Returns a formatted string listing categories and count, not full details.
+    """
+    available = get_available_equipment()
+    
+    if not available:
+        return "No equipment currently available."
+    
+    # Group by category
+    categories = {}
+    for item in available:
+        category = item.get('Category', 'Unknown')
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(item.get('Equipment ID'))
+    
+    # Build summary string
+    summary_lines = [f"We have {len(available)} pieces of equipment available:"]
+    for category, ids in sorted(categories.items()):
+        summary_lines.append(f"  - {category}: {', '.join(ids)} ({len(ids)} items)")
+    
+    summary_lines.append("\nUse get_equipment_details_tool(equipment_id) to show specific equipment details to customers.")
+    
+    return "\n".join(summary_lines)
+
+
 def get_equipment_by_id(equipment_id: str) -> Optional[Dict]:
     """
     Get specific equipment by ID (e.g., "EQ001").
