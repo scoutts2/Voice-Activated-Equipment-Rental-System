@@ -339,10 +339,7 @@ async def entrypoint(ctx: JobContext):
     Sets up the voice assistant and starts the conversation.
     """
     global state
-    logger.info("=== ENTRYPOINT CALLED ===")
-    logger.info(f"Room: {ctx.room.name}")
-    logger.info(f"Room participants: {len(ctx.room.remote_participants)}")
-    logger.info("Starting new rental conversation")
+    logger.info(f"Entrypoint called - Room: {ctx.room.name}, Participants: {len(ctx.room.remote_participants)}")
     
     # Create conversation state to track progress
     state = ConversationState()
@@ -350,8 +347,7 @@ async def entrypoint(ctx: JobContext):
     # Connect to room 
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     
-    logger.info("Connected to room, ready to assist customer")
-    logger.info("=== CREATING AGENT SESSION ===")
+    logger.info("Connected to room, creating agent session")
     
     # Build initial system prompt with equipment data
     available_equipment = get_available_equipment()
@@ -477,21 +473,15 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     # )
     
     # Start the session with the agent and room
-    logger.info("=== STARTING AGENT SESSION ===")
-    logger.info(f"Session STT: {session.stt}")
-    logger.info(f"Session TTS: {session.tts}")
-    logger.info(f"Session LLM: {session.llm}")
+    logger.info("Starting agent session")
     
     await session.start(
         room=ctx.room,
         agent=agent,
     )
     
-    logger.info("=== AGENT SESSION STARTED ===")
-    logger.info("Voice agent started and ready for calls")
-    logger.info("Agent is now live and can handle phone calls via LiveKit Telephony")
-    logger.info(f"Room name: {ctx.room.name}")
-    logger.info(f"Agent name: equipment-rental-agent")
+    logger.info("Agent session started successfully")
+    logger.info(f"Agent ready - Room: {ctx.room.name}")
     
     # Note: In console mode, the agent will greet the user when they first type a message
     # The system prompt is configured to greet immediately when conversation starts
