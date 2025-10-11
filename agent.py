@@ -344,8 +344,8 @@ async def entrypoint(ctx: JobContext):
     # Create conversation state to track progress
     state = ConversationState()
     
-    # Connect to room with full subscription for playground compatibility
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_VIDEO)
+    # Connect to room with audio-only for telephony
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
     
     logger.info("Connected to room, creating agent session")
     
@@ -415,7 +415,7 @@ ENDING THE CONVERSATION:
 - If customer says "goodbye", "I'm done", "that's all", or similar, call end_conversation_tool()
 - If customer decides not to rent (cancels), call end_conversation_tool()
 
-CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the customer first. When you receive ANY message from the customer (even just "hello" or "hi"), respond with: "Hello! Welcome to Metro Equipment Rentals. How can I assist you with your equipment rental needs today?" Then proceed with the 7-stage workflow. Always be proactive and welcoming.
+CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the customer immediately. When the call connects, respond with: "Hello! Thank you for calling Metro Equipment Rentals. I'm here to help you with your construction equipment rental needs. How can I assist you today?" Then proceed with the 7-stage workflow. Speak clearly and professionally for phone conversation.
 """
     
     logger.info(f"Loaded {len(available_equipment)} available equipment items")
@@ -454,13 +454,13 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     # VOICE MODE ENABLED for phone calls and production use
     logger.info("Initializing voice-enabled agent session...")
     logger.info(f"STT: deepgram/nova-2 (enabled for playground)")
-    logger.info(f"TTS: None (disabled - testing text-only response)")
+    logger.info(f"TTS: elevenlabs/multilingual-v2 (enabled for telephony)")
     
     # ENABLE STT/TTS FOR PLAYGROUND TESTING
     session = AgentSession(
         stt="deepgram/nova-2",  # Deepgram STT for voice input
         llm=openai_llm,  # OpenAI GPT-4o
-        tts=None,  # No TTS - respond via text chat
+        tts="elevenlabs/multilingual-v2",  # ElevenLabs TTS for voice output
     )
     
     logger.info("Voice-enabled agent session created successfully")
@@ -483,14 +483,8 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     logger.info("Agent session started successfully")
     logger.info(f"Agent ready - Room: {ctx.room.name}")
     
-    # Handle data channel messages from playground
-    @ctx.room.on("data_received")
-    def on_data_received(data, participant, kind, topic):
-        logger.info(f"Received data from {participant.identity}: {data}")
-        # The session will automatically handle this data through the LLM
-    
-    # Note: In console mode, the agent will greet the user when they first type a message
-    # The system prompt is configured to greet immediately when conversation starts
+    # Note: For telephony, the agent will greet the caller immediately via voice
+    # The system prompt is configured to greet when the call starts
     
     # Session stays open until user presses Q to quit
     # The end_conversation_tool will mark the rental as complete but won't force-close the session, and allows follow-up questions
