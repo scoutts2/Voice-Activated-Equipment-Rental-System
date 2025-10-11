@@ -471,11 +471,18 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     
     # VOICE MODE ENABLED - Using Deepgram (streaming) + ElevenLabs TTS
     # ElevenLabs is more reliable for phone calls than OpenAI TTS
+    
+    # Add STT event handler to log what the agent is hearing
+    def on_stt_transcript(transcript):
+        logger.info(f"[STT HEARD] Customer said: '{transcript.text}'")
+    
+    deepgram_stt = livekit.plugins.deepgram.STT(
+        model="nova-2",
+        api_key=config.DEEPGRAM_API_KEY
+    )
+    
     session = AgentSession(
-        stt=livekit.plugins.deepgram.STT(
-            model="nova-2",
-            api_key=config.DEEPGRAM_API_KEY
-        ),  # Deepgram streaming STT
+        stt=deepgram_stt,  # Deepgram streaming STT
         llm=openai_llm,  # OpenAI GPT-4o
         tts=livekit.plugins.elevenlabs.TTS(
             api_key=config.ELEVENLABS_API_KEY
@@ -484,8 +491,15 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     
     logger.info("Voice-enabled agent session created with Deepgram STT + ElevenLabs TTS")
     
+    # Add event listener for user speech (to log what STT transcribed)
+    @ctx.room.on("track_subscribed")
+    def on_track_subscribed(track, *args):
+        if track.kind == "audio":
+            logger.info("[AUDIO] User audio track subscribed")
+    
     # Start the session with the agent and room
     logger.info("Starting agent session")
+    logger.info("[DEBUG] This will log all STT transcriptions to help debug phone vs console differences")
     
     try:
         await session.start(
