@@ -339,7 +339,11 @@ async def entrypoint(ctx: JobContext):
     Sets up the voice assistant and starts the conversation.
     """
     global state
-    logger.info(f"Entrypoint called - Room: {ctx.room.name}, Participants: {len(ctx.room.remote_participants)}")
+    logger.info(f"========================================")
+    logger.info(f"NEW CALL - Entrypoint called")
+    logger.info(f"Room: {ctx.room.name}")
+    logger.info(f"Participants: {len(ctx.room.remote_participants)}")
+    logger.info(f"========================================")
     
     # Create conversation state to track progress
     state = ConversationState()
@@ -474,19 +478,52 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     # Start the session with the agent and room
     logger.info("Starting agent session")
     
-    await session.start(
-        room=ctx.room,
-        agent=agent,
-    )
-    
-    logger.info("Agent session started successfully")
-    logger.info(f"Agent ready - Room: {ctx.room.name}")
-    
-    # Note: For telephony, the agent will greet the caller immediately via voice
-    # The system prompt is configured to greet when the call starts
-    
-    # Session stays open until user presses Q to quit
-    # The end_conversation_tool will mark the rental as complete but won't force-close the session, and allows follow-up questions
+    try:
+        await session.start(
+            room=ctx.room,
+            agent=agent,
+        )
+        
+        logger.info("Agent session started successfully")
+        logger.info(f"Agent ready - Room: {ctx.room.name}")
+        
+        # Note: For telephony, the agent will greet the caller immediately via voice
+        # The system prompt is configured to greet when the call starts
+        
+        # Session stays open until the call ends (user hangs up or session closes)
+        # The session.start() will block here until the call ends
+        logger.info("session.start() returned - call has ended")
+        
+    except Exception as e:
+        logger.error(f"========================================")
+        logger.error(f"ERROR during agent session: {e}")
+        logger.error(f"========================================", exc_info=True)
+        # Don't re-raise - let cleanup happen
+    finally:
+        # Cleanup when session ends (call hangup, error, etc.)
+        logger.info(f"========================================")
+        logger.info(f"CALL ENDED - Cleaning up")
+        logger.info(f"Room: {ctx.room.name}")
+        logger.info(f"Remaining participants: {len(ctx.room.remote_participants)}")
+        logger.info(f"========================================")
+        
+        # Wait a moment for any pending operations to complete
+        await asyncio.sleep(0.5)
+        
+        # Disconnect from the room to ensure clean state
+        try:
+            if ctx.room.connection_state == "connected":
+                await ctx.room.disconnect()
+                logger.info("Disconnected from room successfully")
+            else:
+                logger.info(f"Room already disconnected (state: {ctx.room.connection_state})")
+        except Exception as e:
+            logger.warning(f"Error disconnecting from room: {e}")
+        
+        # The state will be recreated for the next call
+        # The entrypoint function will be called again for each new incoming call
+        logger.info("Cleanup complete - ready for next call")
+        logger.info(f"========================================")
 
 
 
@@ -495,9 +532,10 @@ if __name__ == "__main__":
     logger.info("Starting LiveKit agent worker...")
     logger.info("Agent name: agent")
     logger.info("Entrypoint function: entrypoint")
+    logger.info("Worker configured to handle multiple consecutive calls")
     
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
-        agent_name="agent"  # Try default agent name
+        agent_name="agent",  # Default agent name for dispatch rules
     ))
 
