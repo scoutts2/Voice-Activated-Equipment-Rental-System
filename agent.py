@@ -453,14 +453,14 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     # Create AgentSession with STT, LLM, TTS
     # VOICE MODE ENABLED for phone calls and production use
     logger.info("Initializing voice-enabled agent session...")
-    logger.info(f"STT: deepgram/nova-2 (enabled for playground)")
-    logger.info(f"TTS: elevenlabs/multilingual-v2 (enabled for telephony)")
+    logger.info(f"STT: deepgram/nova-2 (enabled for voice)")
+    logger.info(f"TTS: openai/tts-1 (enabled for voice)")
     
     # ENABLE STT/TTS FOR PLAYGROUND TESTING
     session = AgentSession(
         stt="deepgram/nova-2",  # Deepgram STT for voice input
         llm=openai_llm,  # OpenAI GPT-4o
-        tts="elevenlabs/multilingual-v2",  # ElevenLabs TTS for voice output
+        tts="openai/tts-1",  # OpenAI TTS (more reliable than ElevenLabs)
     )
     
     logger.info("Voice-enabled agent session created successfully")
