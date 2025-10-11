@@ -344,8 +344,8 @@ async def entrypoint(ctx: JobContext):
     # Create conversation state to track progress
     state = ConversationState()
     
-    # Connect to room 
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    # Connect to room with full subscription for playground compatibility
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_VIDEO)
     
     logger.info("Connected to room, creating agent session")
     
@@ -458,9 +458,9 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     
     # ENABLE STT/TTS FOR PLAYGROUND TESTING
     session = AgentSession(
-        stt="deepgram/nova-2",  # Deepgram STT
+        stt="deepgram/nova-2",  # Deepgram STT for voice input
         llm=openai_llm,  # OpenAI GPT-4o
-        tts=None,  # Temporarily disable TTS to test text-only response
+        tts=None,  # No TTS - respond via text chat
     )
     
     logger.info("Voice-enabled agent session created successfully")
@@ -482,6 +482,12 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY conversation by greeting the
     
     logger.info("Agent session started successfully")
     logger.info(f"Agent ready - Room: {ctx.room.name}")
+    
+    # Handle data channel messages from playground
+    @ctx.room.on("data_received")
+    def on_data_received(data, participant, kind, topic):
+        logger.info(f"Received data from {participant.identity}: {data}")
+        # The session will automatically handle this data through the LLM
     
     # Note: In console mode, the agent will greet the user when they first type a message
     # The system prompt is configured to greet immediately when conversation starts
