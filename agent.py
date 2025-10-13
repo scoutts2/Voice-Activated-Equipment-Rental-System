@@ -298,15 +298,16 @@ async def get_stage_instructions_tool() -> str:
 - When price is agreed, call move_to_next_stage_tool()""",
         
         5: """Stage 5 - Operator Certification:
-- Ask for operator's license number
-- Use the Operator Cert Required field from the selected equipment as certification_type
-- When they provide it, call verify_operator_credentials_tool(operator_license, certification_type)
+- FIRST, inform the customer what credentials are required: "To operate this equipment, you'll need [certification_type from equipment's Operator Cert Required field]"
+- THEN, ask ONLY for their certification number: "What is your certification number?"
+- When they provide the certification number, call verify_operator_credentials_tool(operator_license, certification_type)
 - IF tool returns "verified successfully", call move_to_next_stage_tool()
 - IF verification fails, ask them to provide correct credentials""",
         
         6: """Stage 6 - Insurance Verification:
-- Ask for their insurance policy number
-- When they provide it, call verify_insurance_coverage_tool(policy_number, required_amount, equipment_value)
+- FIRST, inform the customer of insurance requirements: "For this rental, you'll need insurance coverage of at least $[Min Insurance amount from equipment] to cover the equipment value"
+- THEN, ask ONLY for their policy number: "What is your insurance policy number?"
+- When they provide the policy number, call verify_insurance_coverage_tool(policy_number, required_amount, equipment_value)
 - Use the Min Insurance amount from the selected equipment as required_amount
 - Use the Daily Rate * 30 as equipment_value (approximate replacement value)
 - IF tool returns "verified successfully", call move_to_next_stage_tool()
@@ -471,9 +472,12 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     ]
     
     # Create the voice agent with AI models and tools
+    # Configure to prevent self-interruption
     agent = Agent(
         instructions=initial_prompt,
-        tools=tools,  
+        tools=tools,
+        allow_interruptions=True,  # Allow user to interrupt
+        min_endpointing_delay=1.0,  # Wait 1 second of silence before processing (prevents self-interrupt)
     )
     
     logger.info(f"Voice agent created and configured with {len(tools)} tools")
