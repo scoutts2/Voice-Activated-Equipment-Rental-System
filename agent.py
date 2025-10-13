@@ -340,9 +340,10 @@ async def entrypoint(ctx: JobContext):
     """
     global state
     logger.info(f"========================================")
-    logger.info(f"NEW CALL - Entrypoint called")
+    logger.info(f"📞 INCOMING CALL - Entrypoint triggered")
     logger.info(f"Room: {ctx.room.name}")
     logger.info(f"Participants: {len(ctx.room.remote_participants)}")
+    logger.info(f"Worker is processing this call...")
     logger.info(f"========================================")
     
     # Create conversation state to track progress
@@ -531,16 +532,23 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     # Reduce excessive logging to avoid Railway rate limits
     logger.info(f"[CONFIG] STT: Deepgram nova-2 | TTS: OpenAI tts-1 | LLM: GPT-4o")
     logger.info(f"[PROMPT] {len(available_equipment)} items loaded")
+    logger.info("🎯 STARTING SESSION - Agent is ready to answer the call...")
     
     try:
-        # Start the agent session - this will block until the call ends naturally
-        await session.start(
-            room=ctx.room,
-            agent=agent,
+        # Start the agent session with timeout to prevent indefinite hanging
+        # This will block until the call ends naturally
+        await asyncio.wait_for(
+            session.start(
+                room=ctx.room,
+                agent=agent,
+            ),
+            timeout=300.0  # 5 minute timeout for entire call
         )
         
         logger.info("✅ Agent session completed normally")
         
+    except asyncio.TimeoutError:
+        logger.error("❌ Session timed out after 5 minutes")
     except asyncio.CancelledError:
         # This is EXPECTED when a call ends abruptly (user hangup)
         # DO NOT re-raise - just log and cleanup normally

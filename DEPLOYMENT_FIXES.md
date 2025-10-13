@@ -215,6 +215,43 @@ finally:
     # IMPORTANT: Return normally so worker stays alive
 ```
 
+## Critical Fix #3: Agent Not Picking Up Calls At All (Regression)
+
+### Problem
+After applying Critical Fix #2, the agent stopped picking up calls entirely. The worker would start, but no calls would be answered.
+
+**Log Evidence**:
+```
+[No entrypoint logs appearing when calls come in]
+```
+
+### Root Cause
+In attempting to simplify the cleanup logic, we **removed the timeout wrapper around `session.start()`**. Without this timeout:
+- If `session.start()` hangs or blocks for any reason, the entire entrypoint is stuck
+- The worker appears "alive" but is actually blocked waiting for the session to start
+- Subsequent calls cannot be processed because the worker is busy with the blocked session
+
+### Fix Applied
+1. **Re-added timeout for `session.start()`**: 300 seconds (5 minutes) for entire call duration
+2. **Added explicit start logging**: Clearer log message "🎯 STARTING SESSION - Agent is ready to answer the call..."
+3. **Improved entry point logging**: Changed "NEW CALL" to "📞 INCOMING CALL - Entrypoint triggered" for easier identification
+
+```python
+# Start the agent session with timeout to prevent indefinite hanging
+await asyncio.wait_for(
+    session.start(
+        room=ctx.room,
+        agent=agent,
+    ),
+    timeout=300.0  # 5 minute timeout for entire call
+)
+```
+
+### Why This Works
+- **Prevents indefinite blocking**: If session fails to start within 5 minutes, the timeout fires and the worker is released
+- **Balanced timeout**: 300 seconds is long enough for legitimate calls, but prevents indefinite hanging
+- **Better debugging**: The new log messages make it clear when the entrypoint is triggered and when the session is about to start
+
 ## Next Steps
 
 1. **Deploy to Railway** and monitor logs for the new patterns above
