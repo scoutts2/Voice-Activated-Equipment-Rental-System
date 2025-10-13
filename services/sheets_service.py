@@ -8,6 +8,7 @@ import logging
 import json
 import base64
 import os
+import time
 from typing import List, Dict, Optional
 from pathlib import Path
 from config import config
@@ -23,8 +24,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Global variable to cache the Google Sheets client
+# Global variables for caching
 _sheets_client = None
+_equipment_cache = None
+_cache_timestamp = 0
+_CACHE_DURATION = 30  # Cache for 30 seconds to reduce API calls
 
 
 def _get_google_sheets_client():
@@ -153,14 +157,32 @@ def _load_from_csv() -> List[Dict]:
 def load_equipment() -> List[Dict]:
     """
     Load all equipment from Google Sheets (if configured) or CSV fallback.
+    Uses a cache to reduce API calls (30 second cache duration).
     Returns list of equipment dictionaries.
     """
+    global _equipment_cache, _cache_timestamp
+    
+    # Check if cache is still valid
+    current_time = time.time()
+    cache_age = current_time - _cache_timestamp
+    
+    if _equipment_cache is not None and cache_age < _CACHE_DURATION:
+        logger.debug(f"Using cached equipment data (age: {cache_age:.1f}s)")
+        return _equipment_cache
+    
+    # Cache expired or not set - reload data
+    logger.debug("Cache expired or empty - reloading equipment data")
+    
     # Try Google Sheets first
     equipment_list = _load_from_google_sheets()
     
     # Fallback to CSV if Google Sheets failed or not configured
     if equipment_list is None:
         equipment_list = _load_from_csv()
+    
+    # Update cache
+    _equipment_cache = equipment_list
+    _cache_timestamp = current_time
     
     return equipment_list
 
@@ -299,15 +321,28 @@ def update_equipment_status(equipment_id: str, new_status: str) -> bool:
     """
     Update equipment status in Google Sheets (if configured) or CSV fallback.
     Handles race conditions by checking status before updating.
+    Invalidates cache after successful update.
     Returns True if successful, False if equipment was already taken.
     """
+    global _equipment_cache, _cache_timestamp
+    
     # Try Google Sheets first
     if _get_google_sheets_client():
         success = _update_google_sheets_status(equipment_id, new_status)
         if success:
             # Also update CSV as backup
             _update_csv_status(equipment_id, new_status)
+            # Invalidate cache so next load gets fresh data
+            _equipment_cache = None
+            _cache_timestamp = 0
+            logger.debug(f"Cache invalidated after status update for {equipment_id}")
         return success
     else:
         # Fallback to CSV only
-        return _update_csv_status(equipment_id, new_status)
+        success = _update_csv_status(equipment_id, new_status)
+        if success:
+            # Invalidate cache
+            _equipment_cache = None
+            _cache_timestamp = 0
+            logger.debug(f"Cache invalidated after status update for {equipment_id}")
+        return success

@@ -349,12 +349,35 @@ async def entrypoint(ctx: JobContext):
     state = ConversationState()
     
     # Connect to room with audio-only for telephony
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    # Use a timeout to prevent hanging if connection takes too long
+    try:
+        await asyncio.wait_for(
+            ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY),
+            timeout=5.0
+        )
+        logger.info("Connected to room successfully")
+    except asyncio.TimeoutError:
+        logger.error("Connection timed out after 5 seconds - aborting call")
+        return
+    except Exception as e:
+        logger.error(f"Failed to connect to room: {e}")
+        return
     
-    logger.info("Connected to room, creating agent session")
+    logger.info("Loading equipment inventory...")
     
-    # Build initial system prompt with equipment data
-    available_equipment = get_available_equipment()
+    # Load equipment data with timeout to prevent blocking
+    try:
+        available_equipment = await asyncio.wait_for(
+            asyncio.to_thread(get_available_equipment),
+            timeout=3.0
+        )
+        logger.info(f"Equipment loaded successfully: {len(available_equipment)} items")
+    except asyncio.TimeoutError:
+        logger.error("Equipment loading timed out - using empty list")
+        available_equipment = []
+    except Exception as e:
+        logger.error(f"Failed to load equipment: {e}")
+        available_equipment = []
     
     # Format equipment list for better LLM readability
     equipment_text = []
@@ -504,38 +527,58 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     
     # Start the session with the agent and room
     logger.info("Starting agent session")
-    logger.info("[DEBUG] This will log all STT transcriptions to help debug phone vs console differences")
     
-    # Log the exact prompt being used
-    logger.info("="*60)
-    logger.info("[FULL PROMPT] Agent is using this system prompt:")
-    logger.info(initial_prompt[:500] + "..." if len(initial_prompt) > 500 else initial_prompt)
-    logger.info("="*60)
+    # Reduce excessive logging to avoid Railway rate limits
+    logger.info(f"[CONFIG] STT: Deepgram nova-2 | TTS: OpenAI tts-1 | LLM: GPT-4o")
+    logger.info(f"[PROMPT] {len(available_equipment)} items loaded")
+    
+    session_started = False
     
     try:
-        await session.start(
-            room=ctx.room,
-            agent=agent,
+        # Wrap session.start() with a timeout to prevent indefinite hanging
+        await asyncio.wait_for(
+            session.start(
+                room=ctx.room,
+                agent=agent,
+            ),
+            timeout=60.0  # Maximum 60 seconds to start session
         )
         
-        logger.info("Agent session started successfully")
-        logger.info(f"Agent ready - Room: {ctx.room.name}")
+        session_started = True
+        logger.info("✅ Agent session started - call in progress")
         
+    except asyncio.TimeoutError:
+        logger.error("❌ Session start timed out after 60 seconds")
+    except asyncio.CancelledError:
+        logger.warning("⚠️ Session was cancelled")
     except Exception as e:
-        logger.error(f"ERROR during agent session: {e}", exc_info=True)
+        logger.error(f"❌ ERROR during agent session: {e}", exc_info=True)
     finally:
-        logger.info(f"CALL ENDED - Cleaning up")
+        logger.info(f"🔄 CALL ENDED - Cleaning up (session_started={session_started})")
         
+        # Cleanup with aggressive error handling
         try:
-            await asyncio.sleep(0.3)
-            if ctx.room.connection_state == "connected":
-                await ctx.room.disconnect()
-                logger.info("Disconnected successfully")
+            await asyncio.sleep(0.2)
+            
+            # Only disconnect if we're still connected
+            if hasattr(ctx, 'room') and ctx.room.connection_state == "connected":
+                await asyncio.wait_for(
+                    ctx.room.disconnect(),
+                    timeout=2.0
+                )
+                logger.info("✅ Disconnected successfully")
+            else:
+                logger.info("⚠️ Room already disconnected")
+                
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ Disconnect timed out - forcing cleanup")
         except Exception as e:
-            logger.warning(f"Cleanup error: {e}")
+            logger.warning(f"⚠️ Cleanup error (non-fatal): {e}")
         
-        await asyncio.sleep(0.5)
-        logger.info("Ready for next call")
+        # Final delay to ensure resources are released
+        await asyncio.sleep(0.3)
+        logger.info("✅ Ready for next call")
+        logger.info("="*60)
 
 
 
