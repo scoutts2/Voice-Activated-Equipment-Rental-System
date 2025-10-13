@@ -349,14 +349,6 @@ async def entrypoint(ctx: JobContext):
     # Create conversation state to track progress
     state = ConversationState()
     
-    # Create disconnect event to wait for call end (like working example)
-    disconnect_event = asyncio.Event()
-    
-    @ctx.room.on("disconnected")
-    def on_room_disconnect(*args):
-        logger.info("🔌 Room disconnected event received")
-        disconnect_event.set()
-    
     # Connect to room (telephony - audio only)
     try:
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -538,13 +530,16 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info("🎯 Starting agent session...")
     
     try:
-        # Start session with correct parameters (agent + room)
+        # Start session - this blocks until call ends naturally
         await session.start(agent=agent, room=ctx.room)
-        logger.info("✅ Agent session started - waiting for call to end")
+        logger.info("✅ Call completed - session ended")
         
-        # Wait until the room is disconnected
-        await disconnect_event.wait()
-        logger.info("✅ Call ended - disconnect event received")
+    except asyncio.CancelledError:
+        # Normal when user hangs up - don't re-raise
+        logger.info("⚠️ Session cancelled (user hung up)")
+        
+    except Exception as e:
+        logger.error(f"❌ Error during session: {e}", exc_info=True)
         
     finally:
         # Cleanup
