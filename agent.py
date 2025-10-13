@@ -28,23 +28,9 @@ from services.sheets_service import (
     update_equipment_status
 )
 
-# Setup logging with proper handler management to avoid duplicates
-# Clear any existing root handlers first
-root = logging.getLogger()
-for h in list(root.handlers):
-    root.removeHandler(h)
-root.propagate = False
-
-# Configure our module logger with a single handler
-logger = logging.getLogger(__name__)
+# Setup logging (simple and clean like the working example)
+logger = logging.getLogger("equipment-rental-agent")
 logger.setLevel(logging.INFO)
-logger.propagate = False
-logger.handlers.clear()
-
-# Add a single stdout handler with consistent formatting
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
-logger.addHandler(handler)
 
 # Note: Each session will have its own state instance
 # We store it as a session-specific variable, not global
@@ -362,41 +348,14 @@ async def entrypoint(ctx: JobContext):
     # Create conversation state to track progress
     state = ConversationState()
     
-    # Connect to room with audio-only for telephony
-    # Use a timeout to prevent hanging if connection takes too long
-    try:
-        await asyncio.wait_for(
-            ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY),
-            timeout=5.0
-        )
-        logger.info("✅ Connected to room successfully")
-    except asyncio.TimeoutError:
-        logger.error("❌ Connection timed out after 5 seconds - aborting call")
-        return
-    except Exception as e:
-        logger.error(f"❌ Failed to connect to room: {e}")
-        return
+    # Connect to room (telephony - audio only)
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    logger.info("✅ Connected to room")
     
-    # CRITICAL: Wait for participant to join before starting session
-    # This prevents the "Participants: 0" issue and premature session completion
-    logger.info("⏳ Waiting for caller to fully connect (max 15 seconds)...")
-    
-    try:
-        # Wait for at least one remote participant to join
-        start_time = asyncio.get_event_loop().time()
-        timeout = 15.0
-        
-        while len(ctx.room.remote_participants) == 0:
-            if asyncio.get_event_loop().time() - start_time > timeout:
-                logger.error("❌ No participant joined within 15 seconds - aborting call")
-                return
-            await asyncio.sleep(0.1)  # Check every 100ms
-        
-        logger.info(f"✅ Participant connected! Total participants: {len(ctx.room.remote_participants)}")
-        
-    except Exception as e:
-        logger.error(f"❌ Error waiting for participant: {e}")
-        return
+    # Wait for participant (caller) to join - use LiveKit's built-in method
+    logger.info("⏳ Waiting for caller to join...")
+    participant = await ctx.wait_for_participant()
+    logger.info(f"✅ Phone call connected from participant: {participant.identity}")
     
     logger.info("Loading equipment inventory...")
     
@@ -563,68 +522,30 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     # Start the session with the agent and room
     logger.info("Starting agent session")
     
-    # Reduce excessive logging to avoid Railway rate limits
+    # Start the agent session (this will block until call ends)
     logger.info(f"[CONFIG] STT: Deepgram nova-2 | TTS: OpenAI tts-1 | LLM: GPT-4o")
-    logger.info(f"[PROMPT] {len(available_equipment)} items loaded")
-    logger.info("🎯 STARTING SESSION - Agent is ready to answer the call...")
+    logger.info(f"[EQUIPMENT] {len(available_equipment)} items loaded")
+    logger.info("🎯 Starting agent session...")
     
-    try:
-        # Start the agent session with timeout to prevent indefinite hanging
-        # This will block until the call ends naturally
-        await asyncio.wait_for(
-            session.start(
-                room=ctx.room,
-                agent=agent,
-            ),
-            timeout=300.0  # 5 minute timeout for entire call
-        )
-        
-        logger.info("✅ Agent session completed normally")
-        
-    except asyncio.TimeoutError:
-        logger.error("❌ Session timed out after 5 minutes")
-    except asyncio.CancelledError:
-        # This is EXPECTED when a call ends abruptly (user hangup)
-        # DO NOT re-raise - just log and cleanup normally
-        logger.info("⚠️ Session cancelled (user hung up) - this is normal")
-    except Exception as e:
-        # Log any other errors but don't crash the worker
-        logger.error(f"❌ ERROR during agent session: {e}", exc_info=True)
-    finally:
-        # Always cleanup gracefully so worker stays alive for next call
-        logger.info("🔄 CALL ENDED - Cleaning up")
-        
-        try:
-            await asyncio.sleep(0.2)
-            if hasattr(ctx, 'room') and ctx.room.connection_state == "connected":
-                await ctx.room.disconnect()
-                logger.info("✅ Disconnected from room")
-        except Exception as e:
-            logger.warning(f"⚠️ Cleanup warning (non-fatal): {e}")
-        
-        await asyncio.sleep(0.3)
-        logger.info("✅ Ready for next call")
-        logger.info("="*60)
-
-
-
-def main():
-    """Main entry point - ensures single worker instance."""
-    logger.info("🚀 Starting LiveKit agent worker...")
-    logger.info("Agent name: agent")
-    logger.info("Entrypoint function: entrypoint")
-    logger.info("Worker configured to handle multiple consecutive calls")
+    # Start session - let it handle the lifecycle naturally like the working example
+    await session.start(agent=agent, room=ctx.room)
     
-    # Run the worker with explicit single-worker configuration
-    # This prevents duplicate entrypoint calls and logging duplication
-    cli.run_app(WorkerOptions(
-        entrypoint_fnc=entrypoint,
-        agent_name="agent",  # Default agent name for dispatch rules
-        num_idle_processes=1,  # Keep exactly 1 worker process alive
-    ))
+    logger.info("✅ Call completed - session ended naturally")
+
 
 
 if __name__ == "__main__":
-    """Guard to ensure worker only runs once."""
-    main()
+    # Configure logging for better debugging (like the working example)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    logger.info("🚀 Starting equipment rental telephony agent...")
+    
+    # Run the agent - match the working example's simple pattern
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="agent"  # This must match your dispatch rule
+    ))
 

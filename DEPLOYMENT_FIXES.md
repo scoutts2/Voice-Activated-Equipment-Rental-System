@@ -252,7 +252,126 @@ await asyncio.wait_for(
 - **Balanced timeout**: 300 seconds is long enough for legitimate calls, but prevents indefinite hanging
 - **Better debugging**: The new log messages make it clear when the entrypoint is triggered and when the session is about to start
 
-## Critical Fix #4: Multiple Worker Processes & Premature Session Completion
+## Critical Fix #4: Simplify to Match Working Telephony Pattern
+
+### Problem
+Despite all previous fixes, the agent still couldn't handle consecutive calls. Analysis of a working telephony agent revealed we were **over-engineering** the solution with too many timeouts, complex error handling, and manual polling.
+
+**Root Issue**: We were fighting against LiveKit's natural lifecycle instead of working with it.
+
+### Key Learnings from Working Example
+
+1. **Use `ctx.wait_for_participant()`** instead of manual polling
+2. **No timeout wrappers around `session.start()`** - let it handle lifecycle naturally
+3. **Simple logging setup** with `basicConfig` - works fine with single worker
+4. **No complex try-except-finally around session** - LiveKit handles it
+5. **Trust the framework** - LiveKit is designed to handle telephony gracefully
+
+### Fixes Applied
+
+#### 1. Replaced Manual Participant Polling ✅
+**Before** (complex, error-prone):
+```python
+start_time = asyncio.get_event_loop().time()
+timeout = 15.0
+while len(ctx.room.remote_participants) == 0:
+    if asyncio.get_event_loop().time() - start_time > timeout:
+        logger.error("❌ No participant joined within 15 seconds - aborting call")
+        return
+    await asyncio.sleep(0.1)
+```
+
+**After** (simple, built-in):
+```python
+participant = await ctx.wait_for_participant()
+logger.info(f"✅ Phone call connected from participant: {participant.identity}")
+```
+
+#### 2. Simplified Session Start ✅
+**Before** (over-engineered):
+```python
+try:
+    await asyncio.wait_for(
+        session.start(agent=agent, room=ctx.room),
+        timeout=300.0
+    )
+except asyncio.TimeoutError:
+    ...
+except asyncio.CancelledError:
+    ...
+finally:
+    # Complex cleanup logic
+```
+
+**After** (trust the framework):
+```python
+await session.start(agent=agent, room=ctx.room)
+logger.info("✅ Call completed - session ended naturally")
+```
+
+#### 3. Simplified Logging ✅
+**Before** (complex handler management):
+```python
+root = logging.getLogger()
+for h in list(root.handlers):
+    root.removeHandler(h)
+root.propagate = False
+# ... lots of handler configuration
+```
+
+**After** (simple):
+```python
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("equipment-rental-agent")
+```
+
+#### 4. Simplified Worker Startup ✅
+**Before**:
+```python
+def main():
+    ...
+    cli.run_app(WorkerOptions(..., num_idle_processes=1))
+
+if __name__ == "__main__":
+    main()
+```
+
+**After** (matches working example):
+```python
+if __name__ == "__main__":
+    logging.basicConfig(...)
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="agent"
+    ))
+```
+
+### Why This Works
+
+1. **`ctx.wait_for_participant()`** is a proven, tested method that handles all edge cases
+2. **No timeout wrappers** means LiveKit can manage the full session lifecycle without interference
+3. **Simple logging** prevents handler conflicts and duplication
+4. **Trust the framework** - LiveKit Agents is battle-tested for telephony
+
+### Expected Behavior Now
+
+```
+📞 INCOMING CALL - Entrypoint triggered
+✅ Connected to room
+⏳ Waiting for caller to join...
+✅ Phone call connected from participant: [identity]
+Equipment loaded successfully: 65 items
+🎯 Starting agent session...
+[Full conversation with caller]
+✅ Call completed - session ended naturally
+```
+
+**Then immediately ready for next call - no cleanup delays or complex logic needed.**
+
+## Critical Fix #4 (OLD - REPLACED): Multiple Worker Processes & Premature Session Completion
 
 ### Problem
 After deployment, the agent would:
