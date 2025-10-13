@@ -535,50 +535,39 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     session_started = False
     
     try:
-        # Wrap session.start() with a timeout to prevent indefinite hanging
-        await asyncio.wait_for(
-            session.start(
-                room=ctx.room,
-                agent=agent,
-            ),
-            timeout=60.0  # Maximum 60 seconds to start session
+        # Start the agent session - this will block until the call ends
+        logger.info("Starting agent session (will run until call ends)...")
+        
+        await session.start(
+            room=ctx.room,
+            agent=agent,
         )
         
         session_started = True
-        logger.info("✅ Agent session started - call in progress")
+        logger.info("✅ Agent session completed normally")
         
-    except asyncio.TimeoutError:
-        logger.error("❌ Session start timed out after 60 seconds")
     except asyncio.CancelledError:
-        logger.warning("⚠️ Session was cancelled")
+        # This is normal when a call ends abruptly
+        logger.info("⚠️ Session was cancelled (normal for abrupt hangup)")
+        session_started = True
     except Exception as e:
         logger.error(f"❌ ERROR during agent session: {e}", exc_info=True)
     finally:
         logger.info(f"🔄 CALL ENDED - Cleaning up (session_started={session_started})")
         
-        # Cleanup with aggressive error handling
+        # Minimal cleanup - let LiveKit handle most of it
         try:
-            await asyncio.sleep(0.2)
-            
-            # Only disconnect if we're still connected
-            if hasattr(ctx, 'room') and ctx.room.connection_state == "connected":
-                await asyncio.wait_for(
-                    ctx.room.disconnect(),
-                    timeout=2.0
-                )
-                logger.info("✅ Disconnected successfully")
-            else:
-                logger.info("⚠️ Room already disconnected")
-                
-        except asyncio.TimeoutError:
-            logger.warning("⚠️ Disconnect timed out - forcing cleanup")
+            # Small delay to let pending operations finish
+            await asyncio.sleep(0.1)
+            logger.info("✅ Cleanup complete")
         except Exception as e:
             logger.warning(f"⚠️ Cleanup error (non-fatal): {e}")
         
-        # Final delay to ensure resources are released
-        await asyncio.sleep(0.3)
         logger.info("✅ Ready for next call")
         logger.info("="*60)
+        
+        # IMPORTANT: Return normally so the worker stays alive for the next call
+        # Do NOT raise exceptions or exit - just return
 
 
 
@@ -588,9 +577,12 @@ if __name__ == "__main__":
     logger.info("Agent name: agent")
     logger.info("Entrypoint function: entrypoint")
     logger.info("Worker configured to handle multiple consecutive calls")
+    logger.info("Worker will stay alive and handle calls indefinitely")
     
+    # Run the worker - it will stay alive and handle multiple calls
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         agent_name="agent",  # Default agent name for dispatch rules
+        # The worker stays alive by default - each call triggers entrypoint()
     ))
 

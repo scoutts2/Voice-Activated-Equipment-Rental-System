@@ -184,12 +184,44 @@ Equipment loaded successfully: X items
 - Reduce `_CACHE_DURATION` to 10 or 15 seconds
 - Add retry logic to `update_equipment_status()`
 
+## Critical Fix #2: Worker Process Exiting After First Call
+
+### Problem
+After the first call, the worker process was exiting completely, preventing subsequent calls from being picked up.
+
+**Log Evidence**:
+```
+DEBUG:livekit.agents:shutting down job task
+INFO:livekit.agents:process exiting
+```
+
+### Root Cause
+The `entrypoint` function was not handling `asyncio.CancelledError` properly. When a call ends abruptly (hangup), LiveKit cancels the session task, and if not caught, this causes the entire worker process to exit.
+
+### Fix Applied
+1. **Catch `asyncio.CancelledError`**: Treat it as a normal call ending, not an error
+2. **Simplified cleanup**: Removed aggressive disconnect logic that could cause issues
+3. **Explicit return**: Ensure the function returns normally, keeping the worker alive
+
+```python
+except asyncio.CancelledError:
+    # This is normal when a call ends abruptly
+    logger.info("⚠️ Session was cancelled (normal for abrupt hangup)")
+    session_started = True
+finally:
+    # Minimal cleanup
+    await asyncio.sleep(0.1)
+    logger.info("✅ Ready for next call")
+    # IMPORTANT: Return normally so worker stays alive
+```
+
 ## Next Steps
 
 1. **Deploy to Railway** and monitor logs for the new patterns above
-2. **Test with multiple consecutive calls** (call, hang up, call again immediately)
-3. **Test during Google Sheets API slowness** (simulate by pausing network)
-4. **Monitor for 24 hours** to ensure stability
+2. **Test with multiple consecutive calls** (call, hang up, call again immediately) - THIS IS CRITICAL
+3. **Verify worker stays alive**: Look for "Ready for next call" without "process exiting"
+4. **Test during Google Sheets API slowness** (simulate by pausing network)
+5. **Monitor for 24 hours** to ensure stability
 
 ## Cache Trade-offs
 
