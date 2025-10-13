@@ -356,14 +356,9 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ Failed to connect: {e}")
         return
     
-    # Wait for participant (caller) to join - use LiveKit's built-in method
-    logger.info("⏳ Waiting for caller to join...")
-    try:
-        participant = await ctx.wait_for_participant()
-        logger.info(f"✅ Phone call connected from participant: {participant.identity}")
-    except Exception as e:
-        logger.error(f"❌ Failed waiting for participant: {e}")
-        return
+    # For telephony, participant is usually already connected when entrypoint is called
+    # Just log the count and proceed
+    logger.info(f"Participants in room: {len(ctx.room.remote_participants)}")
     
     # Load equipment data (with cache, should be fast)
     logger.info("Loading equipment inventory...")
