@@ -533,8 +533,8 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info("🎯 Starting agent session...")
     
     try:
-        # Start session (must be awaited for AgentSession)
-        await session.start(ctx.room, participant)
+        # Start session with correct parameters (agent + room)
+        await session.start(agent=agent, room=ctx.room)
         logger.info("✅ Agent session started - waiting for call to end")
         
         # Wait until the room is disconnected
