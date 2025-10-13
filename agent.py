@@ -540,8 +540,10 @@ if __name__ == "__main__":
     logger.info("🚀 Starting equipment rental telephony agent...")
     
     # Run the agent - match the working example's simple pattern
+    # Explicitly set to 1 worker to prevent multiple instances
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
-        agent_name="agent"  # This must match your dispatch rule
+        agent_name="agent",  # This must match your dispatch rule
+        worker_type="room",  # Single worker per room
     ))
 
