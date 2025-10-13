@@ -532,42 +532,37 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info(f"[CONFIG] STT: Deepgram nova-2 | TTS: OpenAI tts-1 | LLM: GPT-4o")
     logger.info(f"[PROMPT] {len(available_equipment)} items loaded")
     
-    session_started = False
-    
     try:
-        # Start the agent session - this will block until the call ends
-        logger.info("Starting agent session (will run until call ends)...")
-        
+        # Start the agent session - this will block until the call ends naturally
         await session.start(
             room=ctx.room,
             agent=agent,
         )
         
-        session_started = True
         logger.info("✅ Agent session completed normally")
         
     except asyncio.CancelledError:
-        # This is normal when a call ends abruptly
-        logger.info("⚠️ Session was cancelled (normal for abrupt hangup)")
-        session_started = True
+        # This is EXPECTED when a call ends abruptly (user hangup)
+        # DO NOT re-raise - just log and cleanup normally
+        logger.info("⚠️ Session cancelled (user hung up) - this is normal")
     except Exception as e:
+        # Log any other errors but don't crash the worker
         logger.error(f"❌ ERROR during agent session: {e}", exc_info=True)
     finally:
-        logger.info(f"🔄 CALL ENDED - Cleaning up (session_started={session_started})")
+        # Always cleanup gracefully so worker stays alive for next call
+        logger.info("🔄 CALL ENDED - Cleaning up")
         
-        # Minimal cleanup - let LiveKit handle most of it
         try:
-            # Small delay to let pending operations finish
-            await asyncio.sleep(0.1)
-            logger.info("✅ Cleanup complete")
+            await asyncio.sleep(0.2)
+            if hasattr(ctx, 'room') and ctx.room.connection_state == "connected":
+                await ctx.room.disconnect()
+                logger.info("✅ Disconnected from room")
         except Exception as e:
-            logger.warning(f"⚠️ Cleanup error (non-fatal): {e}")
+            logger.warning(f"⚠️ Cleanup warning (non-fatal): {e}")
         
+        await asyncio.sleep(0.3)
         logger.info("✅ Ready for next call")
         logger.info("="*60)
-        
-        # IMPORTANT: Return normally so the worker stays alive for the next call
-        # Do NOT raise exceptions or exit - just return
 
 
 
