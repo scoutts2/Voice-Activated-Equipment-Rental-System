@@ -349,26 +349,27 @@ async def entrypoint(ctx: JobContext):
     state = ConversationState()
     
     # Connect to room (telephony - audio only)
-    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    logger.info("✅ Connected to room")
+    try:
+        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+        logger.info("✅ Connected to room")
+    except Exception as e:
+        logger.error(f"❌ Failed to connect: {e}")
+        return
     
     # Wait for participant (caller) to join - use LiveKit's built-in method
     logger.info("⏳ Waiting for caller to join...")
-    participant = await ctx.wait_for_participant()
-    logger.info(f"✅ Phone call connected from participant: {participant.identity}")
-    
-    logger.info("Loading equipment inventory...")
-    
-    # Load equipment data with timeout to prevent blocking
     try:
-        available_equipment = await asyncio.wait_for(
-            asyncio.to_thread(get_available_equipment),
-            timeout=3.0
-        )
+        participant = await ctx.wait_for_participant()
+        logger.info(f"✅ Phone call connected from participant: {participant.identity}")
+    except Exception as e:
+        logger.error(f"❌ Failed waiting for participant: {e}")
+        return
+    
+    # Load equipment data (with cache, should be fast)
+    logger.info("Loading equipment inventory...")
+    try:
+        available_equipment = get_available_equipment()
         logger.info(f"Equipment loaded successfully: {len(available_equipment)} items")
-    except asyncio.TimeoutError:
-        logger.error("Equipment loading timed out - using empty list")
-        available_equipment = []
     except Exception as e:
         logger.error(f"Failed to load equipment: {e}")
         available_equipment = []
