@@ -252,6 +252,102 @@ await asyncio.wait_for(
 - **Balanced timeout**: 300 seconds is long enough for legitimate calls, but prevents indefinite hanging
 - **Better debugging**: The new log messages make it clear when the entrypoint is triggered and when the session is about to start
 
+## Critical Fix #4: Multiple Worker Processes & Premature Session Completion
+
+### Problem
+After deployment, the agent would:
+1. Pick up the first call but immediately complete the session before hearing the caller
+2. Not pick up subsequent calls at all
+3. Show duplicate/triple log messages indicating multiple worker processes
+
+**Log Evidence**:
+```
+Participants: 0
+✅ Agent session completed normally
+🔄 CALL ENDED - Cleaning up
+[Then later, actual transcripts arrive but session is already closed]
+```
+
+### Root Causes Identified
+1. **Multiple worker processes**: Duplicate logging and entrypoint calls
+2. **Participants: 0 at start**: Session started before caller fully connected
+3. **Duplicate log handlers**: `logging.basicConfig()` with propagation enabled
+4. **No participant wait logic**: Agent didn't wait for caller to join before starting session
+
+### Fixes Applied
+
+#### 1. Fixed Logging Duplication ✅
+```python
+# Clear any existing root handlers first
+root = logging.getLogger()
+for h in list(root.handlers):
+    root.removeHandler(h)
+root.propagate = False
+
+# Configure our module logger with a single handler
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.propagate = False
+logger.handlers.clear()
+
+# Add a single stdout handler with consistent formatting
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+logger.addHandler(handler)
+```
+
+#### 2. Single Worker Configuration ✅
+```python
+def main():
+    """Main entry point - ensures single worker instance."""
+    cli.run_app(WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="agent",
+        num_idle_processes=1,  # Keep exactly 1 worker process alive
+    ))
+
+if __name__ == "__main__":
+    main()
+```
+
+#### 3. Wait for Participant Before Starting Session ✅
+```python
+# CRITICAL: Wait for participant to join before starting session
+logger.info("⏳ Waiting for caller to fully connect (max 15 seconds)...")
+
+start_time = asyncio.get_event_loop().time()
+timeout = 15.0
+
+while len(ctx.room.remote_participants) == 0:
+    if asyncio.get_event_loop().time() - start_time > timeout:
+        logger.error("❌ No participant joined within 15 seconds - aborting call")
+        return
+    await asyncio.sleep(0.1)  # Check every 100ms
+
+logger.info(f"✅ Participant connected! Total participants: {len(ctx.room.remote_participants)}")
+```
+
+### Why This Works
+- **Single worker**: Prevents duplicate entrypoints and logging
+- **Participant wait**: Ensures caller is fully connected before agent starts speaking
+- **Clean logging**: Makes debugging easier with clear, non-duplicate messages
+- **Proper handoff**: Session only starts when there's actually someone to talk to
+
+### Expected Log Pattern (Correct)
+```
+📞 INCOMING CALL - Entrypoint triggered
+✅ Connected to room successfully
+⏳ Waiting for caller to fully connect (max 15 seconds)...
+✅ Participant connected! Total participants: 1
+Equipment loaded successfully: 65 items
+🎯 STARTING SESSION - Agent is ready to answer the call...
+[Agent greets, conversation proceeds]
+✅ Agent session completed normally
+🔄 CALL ENDED - Cleaning up
+✅ Disconnected from room
+✅ Ready for next call
+```
+
 ## Next Steps
 
 1. **Deploy to Railway** and monitor logs for the new patterns above

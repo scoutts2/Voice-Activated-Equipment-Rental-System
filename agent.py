@@ -5,6 +5,7 @@ Handles the 7-stage rental workflow through voice conversations.
 
 import asyncio
 import logging
+import sys
 from typing import Dict, Optional
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli
 from livekit.agents.llm import function_tool
@@ -27,9 +28,23 @@ from services.sheets_service import (
     update_equipment_status
 )
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Setup logging with proper handler management to avoid duplicates
+# Clear any existing root handlers first
+root = logging.getLogger()
+for h in list(root.handlers):
+    root.removeHandler(h)
+root.propagate = False
+
+# Configure our module logger with a single handler
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.propagate = False
+logger.handlers.clear()
+
+# Add a single stdout handler with consistent formatting
+handler = logging.StreamHandler(sys.stdout)
+handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+logger.addHandler(handler)
 
 # Note: Each session will have its own state instance
 # We store it as a session-specific variable, not global
@@ -342,8 +357,6 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"========================================")
     logger.info(f"📞 INCOMING CALL - Entrypoint triggered")
     logger.info(f"Room: {ctx.room.name}")
-    logger.info(f"Participants: {len(ctx.room.remote_participants)}")
-    logger.info(f"Worker is processing this call...")
     logger.info(f"========================================")
     
     # Create conversation state to track progress
@@ -356,12 +369,33 @@ async def entrypoint(ctx: JobContext):
             ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY),
             timeout=5.0
         )
-        logger.info("Connected to room successfully")
+        logger.info("✅ Connected to room successfully")
     except asyncio.TimeoutError:
-        logger.error("Connection timed out after 5 seconds - aborting call")
+        logger.error("❌ Connection timed out after 5 seconds - aborting call")
         return
     except Exception as e:
-        logger.error(f"Failed to connect to room: {e}")
+        logger.error(f"❌ Failed to connect to room: {e}")
+        return
+    
+    # CRITICAL: Wait for participant to join before starting session
+    # This prevents the "Participants: 0" issue and premature session completion
+    logger.info("⏳ Waiting for caller to fully connect (max 15 seconds)...")
+    
+    try:
+        # Wait for at least one remote participant to join
+        start_time = asyncio.get_event_loop().time()
+        timeout = 15.0
+        
+        while len(ctx.room.remote_participants) == 0:
+            if asyncio.get_event_loop().time() - start_time > timeout:
+                logger.error("❌ No participant joined within 15 seconds - aborting call")
+                return
+            await asyncio.sleep(0.1)  # Check every 100ms
+        
+        logger.info(f"✅ Participant connected! Total participants: {len(ctx.room.remote_participants)}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error waiting for participant: {e}")
         return
     
     logger.info("Loading equipment inventory...")
@@ -574,18 +608,23 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
 
 
 
-if __name__ == "__main__":
-    """Run the agent when this file is executed."""
-    logger.info("Starting LiveKit agent worker...")
+def main():
+    """Main entry point - ensures single worker instance."""
+    logger.info("🚀 Starting LiveKit agent worker...")
     logger.info("Agent name: agent")
     logger.info("Entrypoint function: entrypoint")
     logger.info("Worker configured to handle multiple consecutive calls")
-    logger.info("Worker will stay alive and handle calls indefinitely")
     
-    # Run the worker - it will stay alive and handle multiple calls
+    # Run the worker with explicit single-worker configuration
+    # This prevents duplicate entrypoint calls and logging duplication
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         agent_name="agent",  # Default agent name for dispatch rules
-        # The worker stays alive by default - each call triggers entrypoint()
+        num_idle_processes=1,  # Keep exactly 1 worker process alive
     ))
+
+
+if __name__ == "__main__":
+    """Guard to ensure worker only runs once."""
+    main()
 
