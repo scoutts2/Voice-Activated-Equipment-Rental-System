@@ -536,10 +536,40 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info(f"[EQUIPMENT] {len(available_equipment)} items loaded")
     logger.info("🎯 Starting agent session...")
     
-    # Start session - let it handle the lifecycle naturally like the working example
-    await session.start(agent=agent, room=ctx.room)
-    
-    logger.info("✅ Call completed - session ended naturally")
+    try:
+        # Start session - this blocks until call ends
+        await session.start(agent=agent, room=ctx.room)
+        logger.info("✅ Call completed - session ended naturally")
+        
+    except asyncio.CancelledError:
+        # Normal when user hangs up abruptly - don't re-raise
+        logger.info("⚠️ Session cancelled (user hung up)")
+        
+    except Exception as e:
+        logger.error(f"❌ Error during session: {e}", exc_info=True)
+        
+    finally:
+        # Always cleanup - ensure worker stays alive for next call
+        logger.info("🔄 Cleaning up session...")
+        
+        try:
+            # Small delay to let pending operations finish
+            await asyncio.sleep(0.3)
+            
+            # Disconnect from room if still connected
+            if ctx.room.connection_state == "connected":
+                await ctx.room.disconnect()
+                logger.info("✅ Disconnected from room")
+            else:
+                logger.info(f"ℹ️ Room already disconnected (state: {ctx.room.connection_state})")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Cleanup warning (non-fatal): {e}")
+        
+        # Final delay to ensure resources released
+        await asyncio.sleep(0.5)
+        logger.info("✅ Cleanup complete - ready for next call")
+        logger.info("="*60)
 
 
 
