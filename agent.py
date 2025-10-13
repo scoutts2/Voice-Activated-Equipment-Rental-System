@@ -501,10 +501,10 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
         stt=deepgram_stt,  # Deepgram streaming STT
         llm=openai_llm,  # OpenAI GPT-4o
         tts=livekit.plugins.openai.TTS(
-            model="tts-1",
+            model="tts-1-hd",  # Higher quality model (was tts-1)
             voice="alloy",
             api_key=config.OPENAI_API_KEY
-        ),  # OpenAI TTS (more stable on Railway)
+        ),  # OpenAI TTS HD for better audio quality
     )
     
     logger.info("Voice-enabled agent session created with Deepgram STT + OpenAI TTS")
