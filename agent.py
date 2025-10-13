@@ -509,14 +509,12 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     session = AgentSession(
         stt=deepgram_stt,  # Deepgram streaming STT
         llm=openai_llm,  # OpenAI GPT-4o
-        tts=livekit.plugins.openai.TTS(
-            model="tts-1-hd",  # Higher quality model (was tts-1)
-            voice="alloy",
-            api_key=config.OPENAI_API_KEY
-        ),  # OpenAI TTS HD for better audio quality
+        tts=livekit.plugins.elevenlabs.TTS(
+            api_key=config.ELEVENLABS_API_KEY
+        ),  # ElevenLabs TTS - optimized for voice calls
     )
     
-    logger.info("Voice-enabled agent session created with Deepgram STT + OpenAI TTS")
+    logger.info("Voice-enabled agent session created with Deepgram STT + ElevenLabs TTS")
     
     # Add event listener for user speech (to log what STT transcribed)
     @ctx.room.on("track_subscribed")
@@ -528,7 +526,7 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info("Starting agent session")
     
     # Start the agent session (this will block until call ends)
-    logger.info(f"[CONFIG] STT: Deepgram nova-2 | TTS: OpenAI tts-1 | LLM: GPT-4o")
+    logger.info(f"[CONFIG] STT: Deepgram nova-2 | TTS: ElevenLabs | LLM: GPT-4o")
     logger.info(f"[EQUIPMENT] {len(available_equipment)} items loaded")
     logger.info("🎯 Starting agent session...")
     
