@@ -348,6 +348,14 @@ async def entrypoint(ctx: JobContext):
     # Create conversation state to track progress
     state = ConversationState()
     
+    # Create disconnect event to wait for call end (like working example)
+    disconnect_event = asyncio.Event()
+    
+    @ctx.room.on("disconnected")
+    def on_room_disconnect(*args):
+        logger.info("🔌 Room disconnected event received")
+        disconnect_event.set()
+    
     # Connect to room (telephony - audio only)
     try:
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
@@ -356,22 +364,10 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ Failed to connect: {e}")
         return
     
-    # Wait for participant to join (telephony has slight delay)
+    # Wait for participant to join (using working example pattern)
     logger.info(f"Participants in room: {len(ctx.room.remote_participants)}")
-    
-    # If no participants yet, wait a bit for them to connect
-    if len(ctx.room.remote_participants) == 0:
-        logger.info("No participants yet, waiting for caller to connect...")
-        for i in range(30):  # Wait up to 3 seconds (30 * 0.1s)
-            await asyncio.sleep(0.1)
-            if len(ctx.room.remote_participants) > 0:
-                logger.info(f"✅ Participant connected! Count: {len(ctx.room.remote_participants)}")
-                break
-        
-        if len(ctx.room.remote_participants) == 0:
-            logger.warning("⚠️ No participant joined after 3 seconds - call may have been abandoned")
-    else:
-        logger.info(f"✅ Participant already in room: {len(ctx.room.remote_participants)}")
+    participant = await ctx.wait_for_participant()
+    logger.info(f"✅ Participant joined: {participant.identity}")
     
     # Load equipment data (with cache, should be fast)
     logger.info("Loading equipment inventory...")
@@ -537,36 +533,17 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info("🎯 Starting agent session...")
     
     try:
-        # Start session - this blocks until call ends
-        await session.start(agent=agent, room=ctx.room)
-        logger.info("✅ Call completed - session ended naturally")
+        # Start session with participant (like working example)
+        session.start(ctx.room, participant)
+        logger.info("✅ Agent session started - waiting for call to end")
         
-    except asyncio.CancelledError:
-        # Normal when user hangs up abruptly - don't re-raise
-        logger.info("⚠️ Session cancelled (user hung up)")
-        
-    except Exception as e:
-        logger.error(f"❌ Error during session: {e}", exc_info=True)
+        # Wait until the room is disconnected (working example pattern)
+        await disconnect_event.wait()
+        logger.info("✅ Call ended - disconnect event received")
         
     finally:
-        # Always cleanup - ensure worker stays alive for next call
-        logger.info("🔄 Cleaning up session...")
-        
-        try:
-            # Small delay to let pending operations finish
-            await asyncio.sleep(0.3)
-            
-            # Disconnect from room if still connected
-            if ctx.room.connection_state == "connected":
-                await ctx.room.disconnect()
-                logger.info("✅ Disconnected from room")
-            else:
-                logger.info(f"ℹ️ Room already disconnected (state: {ctx.room.connection_state})")
-                
-        except Exception as e:
-            logger.warning(f"⚠️ Cleanup warning (non-fatal): {e}")
-        
-        # Final delay to ensure resources released
+        # Cleanup (working example pattern)
+        logger.info("🔄 Cleaning up...")
         await asyncio.sleep(0.5)
         logger.info("✅ Cleanup complete - ready for next call")
         logger.info("="*60)
