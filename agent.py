@@ -533,16 +533,16 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     logger.info("🎯 Starting agent session...")
     
     try:
-        # Start session with participant (like working example)
-        session.start(ctx.room, participant)
+        # Start session (must be awaited for AgentSession)
+        await session.start(ctx.room, participant)
         logger.info("✅ Agent session started - waiting for call to end")
         
-        # Wait until the room is disconnected (working example pattern)
+        # Wait until the room is disconnected
         await disconnect_event.wait()
         logger.info("✅ Call ended - disconnect event received")
         
     finally:
-        # Cleanup (working example pattern)
+        # Cleanup
         logger.info("🔄 Cleaning up...")
         await asyncio.sleep(0.5)
         logger.info("✅ Cleanup complete - ready for next call")
