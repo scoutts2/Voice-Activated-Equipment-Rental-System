@@ -356,9 +356,22 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ Failed to connect: {e}")
         return
     
-    # For telephony, participant is usually already connected when entrypoint is called
-    # Just log the count and proceed
+    # Wait for participant to join (telephony has slight delay)
     logger.info(f"Participants in room: {len(ctx.room.remote_participants)}")
+    
+    # If no participants yet, wait a bit for them to connect
+    if len(ctx.room.remote_participants) == 0:
+        logger.info("No participants yet, waiting for caller to connect...")
+        for i in range(30):  # Wait up to 3 seconds (30 * 0.1s)
+            await asyncio.sleep(0.1)
+            if len(ctx.room.remote_participants) > 0:
+                logger.info(f"✅ Participant connected! Count: {len(ctx.room.remote_participants)}")
+                break
+        
+        if len(ctx.room.remote_participants) == 0:
+            logger.warning("⚠️ No participant joined after 3 seconds - call may have been abandoned")
+    else:
+        logger.info(f"✅ Participant already in room: {len(ctx.room.remote_participants)}")
     
     # Load equipment data (with cache, should be fast)
     logger.info("Loading equipment inventory...")
