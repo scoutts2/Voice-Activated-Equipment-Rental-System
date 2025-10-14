@@ -362,7 +362,7 @@ async def entrypoint(ctx: JobContext):
     participant = await ctx.wait_for_participant()
     logger.info(f"Participant joined: {participant.identity}")
     
-    # Load equipment data (with cache, should be fast)
+
     logger.info("Loading equipment inventory...")
     try:
         available_equipment = get_available_equipment()
