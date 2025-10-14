@@ -371,7 +371,7 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"Failed to load equipment: {e}")
         available_equipment = []
     
-    # Format equipment list for better LLM readability
+ 
     equipment_text = []
     for item in available_equipment:
         equipment_text.append(
