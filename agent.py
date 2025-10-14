@@ -28,7 +28,7 @@ from services.sheets_service import (
     update_equipment_status
 )
 
-# Setup logging (simple and clean like the working example)
+
 logger = logging.getLogger("equipment-rental-agent")
 logger.setLevel(logging.INFO)
 
@@ -100,78 +100,64 @@ async def get_equipment_details_tool(equipment_id: str):
 
 
 @function_tool
-async def negotiate_price_tool(equipment_id: str, customer_response: str, urgency_level: str = "normal"):
+async def negotiate_price_tool(equipment_id: str, action: str):
     """
-    Handle pricing negotiation based on customer response and urgency.
-    Progressively lowers price from daily rate toward minimum rate.
-    urgency_level: "low", "normal", "high", "critical"
+    Negotiate equipment pricing.
+    
+    Args:
+        equipment_id: The equipment ID
+        action: Either "offer_discount" to lower the price, or "accept_price" when customer agrees
+    
+    Returns pricing information and next steps.
     """
-    logger.info(f"Negotiating price for {equipment_id}, urgency: {urgency_level}, negotiation count: {state.negotiation_count}")
+    logger.info(f"negotiate_price_tool called: equipment={equipment_id}, action={action}, negotiation_count={state.negotiation_count}")
     
     equipment = get_equipment_by_id(equipment_id)
     if not equipment:
-        return "Equipment not found for negotiation."
+        return "Equipment not found."
     
     daily_rate = int(equipment['Daily Rate'])
     min_rate = int(equipment.get('Minimum Rate', daily_rate * 0.8))
     
-    # If this is the first negotiation, start with the daily rate
+    # Initialize price offer if first time
     if state.current_price_offer is None:
         state.current_price_offer = daily_rate
     
-    # Check if customer is accepting the current offer
-    if any(word in customer_response.lower() for word in ["yes", "accept", "good", "ok", "fine", "deal", "sounds good"]):
+    if action == "accept_price":
+        # Customer accepted the current price
         state.agreed_price = state.current_price_offer
         logger.info(f"Customer accepted price: ${state.current_price_offer}")
-        return f"Excellent! ${state.current_price_offer} per day it is. Let's move forward with the next step."
+        return f"Price agreed: ${state.current_price_offer} per day. Pricing is complete. Now call move_to_next_stage_tool() to proceed to operator certification."
     
-    # Customer wants a lower price - negotiate down
-    if any(phrase in customer_response.lower() for phrase in ["too expensive", "too much", "lower", "struggling", "cheaper", "better price", "discount", "negotiate"]):
+    elif action == "offer_discount":
+        # Offer a discounted price
         state.negotiation_count += 1
         current_offer = state.current_price_offer
         
-        # Calculate how much room we have to negotiate
-        negotiation_range = current_offer - min_rate
-        
-        # If we're already at or below minimum, hold firm (but NEVER reveal the actual minimum)
+        # If already at minimum, hold firm
         if current_offer <= min_rate:
-            logger.info(f"At minimum price: ${min_rate}")
-            return f"I understand your budget concerns. Unfortunately, ${current_offer} is the absolute lowest rate I can offer for this equipment. This is already a special rate and I really can't go any lower. Can you work with this price?"
+            logger.info(f"Already at minimum price: ${min_rate}")
+            return f"Current offer: ${current_offer} per day. This is already our absolute lowest rate. We cannot go lower. If customer accepts, call negotiate_price_tool(equipment_id, 'accept_price')."
         
-        # Determine discount amount based on urgency and negotiation count
-        # Start generous, get smaller with each negotiation
-        if urgency_level == "critical":
-            discount_percent = 0.35 - (state.negotiation_count * 0.05)  # 35%, 30%, 25%, 20%...
-        elif urgency_level == "high":
-            discount_percent = 0.30 - (state.negotiation_count * 0.05)  # 30%, 25%, 20%, 15%...
-        elif urgency_level == "low":
-            discount_percent = 0.15 - (state.negotiation_count * 0.03)  # 15%, 12%, 9%, 6%...
-        else:  # normal
-            discount_percent = 0.25 - (state.negotiation_count * 0.05)  # 25%, 20%, 15%, 10%...
-        
-        # Make sure we don't give negative discounts
-        discount_percent = max(0.02, discount_percent)  # Minimum 2% discount per negotiation
-        
-        # Calculate new offer
+        # Calculate discount(decreases with each negotiation)
+        negotiation_range = current_offer - min_rate
+        discount_percent = max(0.10, 0.25 - (state.negotiation_count * 0.05))  # 25%, 20%, 15%, 10%...
         discount_amount = int(negotiation_range * discount_percent)
         new_offer = max(min_rate, current_offer - discount_amount)
         
         # Update state
         state.current_price_offer = new_offer
+        logger.info(f"Lowered price from ${current_offer} to ${new_offer}")
         
-        logger.info(f"Lowering price from ${current_offer} to ${new_offer} (discount: ${discount_amount})")
-        
-        # Response varies based on how close we are to minimum
+        # Return the new offer with guidance
         remaining_room = new_offer - min_rate
         if remaining_room < 50:
-            return f"I really want to make this work for you. I can go down to ${new_offer} per day, but that's as low as I can go. This is already below our standard rate. What do you think?"
-        elif remaining_room < 200:
-            return f"I understand your situation. I can offer ${new_offer} per day. This is a very competitive rate for this equipment. Can we move forward with this?"
+            return f"New offer: ${new_offer} per day. This is as low as we can go (at minimum rate). Tell customer this is the best rate possible. If they accept, call negotiate_price_tool(equipment_id, 'accept_price')."
         else:
-            return f"I hear you. Let me see what I can do... I can offer you ${new_offer} per day. This is a special rate I'm able to provide. How does that sound?"
+            return f"New offer: ${new_offer} per day. You can still negotiate lower if needed. Current offer is ${new_offer - min_rate} above minimum. If customer accepts, call negotiate_price_tool(equipment_id, 'accept_price')."
     
-    # Default response - customer hasn't clearly accepted or rejected
-    return f"The current rate we're discussing is ${state.current_price_offer} per day. Is this within your budget, or would you like to see if we can adjust it further?"
+    else:
+        return f"Invalid action. Use 'offer_discount' to lower price or 'accept_price' when customer agrees. Current price: ${state.current_price_offer}"
 
 
 @function_tool
@@ -226,7 +212,7 @@ async def verify_operator_credentials_tool(operator_license: str, certification_
     logger.info(f"Verifying operator credentials: {operator_license} for {certification_type}")
     
 
-    is_valid = verify_operator_credentials(operator_license, certification_type)
+    is_valid= verify_operator_credentials(operator_license, certification_type)
     
     if is_valid:
         return f"Operator credentials verified successfully for license {operator_license} in {certification_type}."
@@ -240,7 +226,7 @@ async def verify_site_safety_tool(job_address: str, equipment_category: str, wei
     logger.info(f"Verifying site safety at {job_address} for {equipment_category} ({weight_class})")
     
 
-    is_valid = verify_site_safety(job_address, equipment_category, weight_class)
+    is_valid =verify_site_safety(job_address, equipment_category, weight_class)
     
     if is_valid:
         return f"Site safety verified for {job_address}. The location can safely handle {equipment_category} equipment ({weight_class})."
@@ -289,13 +275,17 @@ async def get_stage_instructions_tool() -> str:
 - DO NOT discuss pricing - that comes in Stage 4""",
         
         4: """Stage 4 - Pricing Negotiation:
-- Show ONLY the daily rate for selected equipment (DO NOT mention max rate)
-- Use negotiate_price_tool(equipment_id, customer_response, urgency_level) to handle negotiations
-- Determine urgency_level based on customer language: "urgent/critical/emergency" = "critical", "asap/soon" = "high", casual = "normal", "no rush" = "low"
-- Start with daily rate, negotiate down gradually based on customer objections
-- Only go to minimum rate in worst case scenarios
-- Confirm final price
-- When price is agreed, call move_to_next_stage_tool()""",
+- Start by quoting ONLY the daily rate: "The daily rate is $[amount] per day"
+- DO NOT mention minimum rate or max rate to the customer
+- Listen to customer response:
+  * IF customer says price is too high / wants discount / makes counter-offer:
+    - Call negotiate_price_tool(equipment_id, "offer_discount") to get a lower price
+    - Present the new price to the customer naturally
+    - Repeat until customer accepts or you reach minimum
+  * IF customer accepts the price (says yes/ok/that works/sounds good):
+    - Call negotiate_price_tool(equipment_id, "accept_price") to lock in the price
+    - Tool will automatically tell you to call move_to_next_stage_tool()
+- Be persuasive but fair - try to close at a good price without immediately dropping to minimum""",
         
         5: """Stage 5 - Operator Certification:
 - FIRST, inform the customer what credentials are required: "To operate this equipment, you'll need [certification_type from equipment's Operator Cert Required field]"
@@ -308,15 +298,17 @@ async def get_stage_instructions_tool() -> str:
 - FIRST, inform the customer of insurance requirements: "For this rental, you'll need insurance coverage of at least $[Min Insurance amount from equipment] to cover the equipment value"
 - THEN, ask ONLY for their policy number: "What is your insurance policy number?"
 - When they provide the policy number, call verify_insurance_coverage_tool(policy_number, required_amount, equipment_value)
-- Use the Min Insurance amount from the selected equipment as required_amount
-- Use the Daily Rate * 30 as equipment_value (approximate replacement value)
+- Use the EXACT "Min Insurance" value from the selected equipment's Google Sheets data for BOTH required_amount AND equipment_value
+- DO NOT calculate or make up insurance values - use the exact value from the equipment data
 - IF tool returns "verified successfully", call move_to_next_stage_tool()
 - IF verification fails, ask them to update coverage""",
         
         7: """Stage 7 - Booking Completion:
-- FIRST: Call book_equipment_tool(equipment_id) to finalize the rental
-- THEN: Confirm all details (equipment, price, dates, operator, insurance, pickup location)
-- FINALLY: Call end_conversation_tool() after customer acknowledges completion
+- DO NOT call get_stage_instructions_tool() in this stage (save function calls for booking)
+- IMMEDIATELY call book_equipment_tool(equipment_id) to finalize the rental
+- THEN: Speak directly to confirm all details (equipment, price, pickup location, etc.)
+- FINALLY: Ask if they have any questions, then call end_conversation_tool()
+- Say "Thank you for choosing Metro Equipment Rentals!" at the end
 - Thank the customer for their business"""
     }
     
@@ -342,25 +334,33 @@ async def entrypoint(ctx: JobContext):
     """
     global state
     logger.info(f"========================================")
-    logger.info(f"📞 INCOMING CALL - Entrypoint triggered")
+    logger.info(f"INCOMING CALL - Entrypoint triggered")
     logger.info(f"Room: {ctx.room.name}")
     logger.info(f"========================================")
     
     # Create conversation state to track progress
     state = ConversationState()
     
+    # Create disconnect event to wait for call end (like working example)
+    disconnect_event = asyncio.Event()
+    
+    @ctx.room.on("disconnected")
+    def on_room_disconnect(*args):
+        logger.info("Room disconnected event received")
+        disconnect_event.set()
+    
     # Connect to room (telephony - audio only)
     try:
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-        logger.info("✅ Connected to room")
+        logger.info("Connected to room")
     except Exception as e:
-        logger.error(f"❌ Failed to connect: {e}")
+        logger.error(f"Failed to connect: {e}")
         return
     
     # Wait for participant to join (using working example pattern)
     logger.info(f"Participants in room: {len(ctx.room.remote_participants)}")
     participant = await ctx.wait_for_participant()
-    logger.info(f"✅ Participant joined: {participant.identity}")
+    logger.info(f"Participant joined: {participant.identity}")
     
     # Load equipment data (with cache, should be fast)
     logger.info("Loading equipment inventory...")
@@ -403,7 +403,7 @@ AVAILABLE EQUIPMENT (Total: {len(available_equipment)} items):
        - move_to_next_stage_tool() - Move to the next stage when ready
        - verify_business_license_tool(license_number) - Verify customer's business license
        - get_equipment_details_tool(equipment_id) - Get details about specific equipment
-       - negotiate_price_tool(equipment_id, customer_response, urgency_level) - Handle pricing negotiations
+       - negotiate_price_tool(equipment_id, action) - Negotiate pricing ("offer_discount" to lower price, "accept_price" when agreed)
        - verify_site_safety_tool(job_address, equipment_category, weight_class) - Verify job site safety
        - verify_operator_credentials_tool(operator_license, certification_type) - Verify operator credentials
        - verify_insurance_coverage_tool(policy_number, required_amount, equipment_value) - Verify insurance
@@ -413,11 +413,14 @@ AVAILABLE EQUIPMENT (Total: {len(available_equipment)} items):
 WORKFLOW INSTRUCTIONS:
 - You MUST complete stages ONE AT A TIME in order (1→2→3→4→5→6→7)
 - NEVER skip ahead or ask for information from future stages
-- After EVERY customer response, call get_current_stage_tool() to check which stage you're in
-- Call get_stage_instructions_tool() to see what to do in the current stage
+- After moving to a NEW stage with move_to_next_stage_tool(), call get_stage_instructions_tool() ONCE to see what to do
 - Follow the stage instructions EXACTLY - only do what that stage says
 - Call move_to_next_stage_tool() ONLY when the current stage is complete
-- NEVER ask for operator credentials, insurance, or pricing until you reach those specific stages
+- Stage 4 is PRICING NEGOTIATION (not operator credentials)
+- Stage 5 is OPERATOR CERTIFICATION (ask for certification number)
+- Stage 6 is INSURANCE VERIFICATION (ask for policy number)
+- Stage 7: DO NOT call get_stage_instructions_tool(), just book immediately
+- Be efficient with tool calls to avoid hitting function call limits
 - Be friendly and professional throughout the conversation
 - Confirm details by repeating them back to the customer
 
@@ -428,15 +431,18 @@ WORKFLOW INSTRUCTIONS:
        - The tool will return the actual result - use that exact result in your response
        - Example: Call verify_business_license_tool(123), WAIT for response, then tell customer the result
 
-       PRICING NEGOTIATION STRATEGY:
-       - In Stage 4, start by stating ONLY the daily rate (NEVER mention max rate or minimum rate)
-       - Use negotiate_price_tool() to handle all pricing discussions
-       - Determine urgency_level from customer language: "urgent/critical/emergency" = "critical", "asap/soon" = "high", casual = "normal", "no rush" = "low"
-       - If customer says price is "too expensive" or "too much", use negotiate_price_tool() to offer a lower price
-       - Negotiate gradually - start with daily rate, then work down based on customer objections
-       - CRITICAL: NEVER reveal the minimum rate to the customer, even when pressed
-       - Only offer minimum rate in worst-case scenarios when customer is very price-sensitive
-       - Try to maximize profit while keeping the customer satisfied
+       PRICING NEGOTIATION STRATEGY (Stage 4):
+       - Quote ONLY the daily rate to the customer: "The daily rate is $X per day"
+       - NEVER mention minimum rate or max rate to the customer
+       - When customer objects to price or wants discount:
+         1. Call negotiate_price_tool(equipment_id, "offer_discount")
+         2. Tool returns a lower price - present it naturally to customer
+         3. Repeat if customer still wants lower, until they accept or you hit minimum
+       - When customer accepts a price (says yes/ok/sounds good/that works):
+         1. Call negotiate_price_tool(equipment_id, "accept_price") to lock it in
+         2. Tool will tell you to call move_to_next_stage_tool()
+       - Be conversational and persuasive - don't immediately drop to minimum
+       - The tool handles all calculations - you just present prices and read customer reactions
 
 ENDING THE CONVERSATION:
 - After completing Stage 7 (booking), call end_conversation_tool() to close the session
@@ -527,25 +533,22 @@ CRITICAL GREETING REQUIREMENT: You MUST start EVERY phone call by greeting the c
     # Start the agent session (this will block until call ends)
     logger.info(f"[CONFIG] STT: Deepgram nova-2 | TTS: Deepgram | LLM: GPT-4o")
     logger.info(f"[EQUIPMENT] {len(available_equipment)} items loaded")
-    logger.info("🎯 Starting agent session...")
+    logger.info("Starting agent session...")
     
     try:
-        # Start session - this blocks until call ends naturally
+        # Start session with correct parameters (agent + room)
         await session.start(agent=agent, room=ctx.room)
-        logger.info("✅ Call completed - session ended")
+        logger.info("Agent session started - waiting for call to end")
         
-    except asyncio.CancelledError:
-        # Normal when user hangs up - don't re-raise
-        logger.info("⚠️ Session cancelled (user hung up)")
-        
-    except Exception as e:
-        logger.error(f"❌ Error during session: {e}", exc_info=True)
+        # Wait until the room is disconnected
+        await disconnect_event.wait()
+        logger.info("Call ended - disconnect event received")
         
     finally:
         # Cleanup
-        logger.info("🔄 Cleaning up...")
+        logger.info("Cleaning up...")
         await asyncio.sleep(0.5)
-        logger.info("✅ Cleanup complete - ready for next call")
+        logger.info("Cleanup complete - ready for next call")
         logger.info("="*60)
 
 
@@ -557,7 +560,7 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    logger.info("🚀 Starting equipment rental telephony agent...")
+    logger.info("Starting equipment rental telephony agent...")
     
     # Run the agent - match the working example's simple pattern
     cli.run_app(WorkerOptions(
